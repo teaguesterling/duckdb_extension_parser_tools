@@ -1,0 +1,23 @@
+# name: test/sql/parse_tables.test
+# description: test parse_tables extension
+# group: [parse_tables]
+
+# Before we load the extension, this will fail
+statement error
+SELECT parse_tables('Sam');
+----
+Catalog Error: Scalar Function with name parse_tables does not exist!
+
+# Require statement will ensure this test is run with this extension loaded
+require parse_tables
+
+# Confirm the extension works
+query I
+SELECT parse_tables('Sam');
+----
+ParseTables Sam 🐥
+
+query I
+SELECT parse_tables_openssl_version('Michael') ILIKE 'ParseTables Michael, my linked OpenSSL version is OpenSSL%';
+----
+true
