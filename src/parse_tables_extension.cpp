@@ -22,26 +22,10 @@ inline void ParseTablesScalarFun(DataChunk &args, ExpressionState &state, Vector
         });
 }
 
-inline void ParseTablesOpenSSLVersionScalarFun(DataChunk &args, ExpressionState &state, Vector &result) {
-    auto &name_vector = args.data[0];
-    UnaryExecutor::Execute<string_t, string_t>(
-	    name_vector, result, args.size(),
-	    [&](string_t name) {
-			return StringVector::AddString(result, "ParseTables " + name.GetString() +
-                                                     ", my linked OpenSSL version is " +
-                                                     OPENSSL_VERSION_TEXT );
-        });
-}
-
 static void LoadInternal(DatabaseInstance &instance) {
     // Register a scalar function
     auto parse_tables_scalar_function = ScalarFunction("parse_tables", {LogicalType::VARCHAR}, LogicalType::VARCHAR, ParseTablesScalarFun);
     ExtensionUtil::RegisterFunction(instance, parse_tables_scalar_function);
-
-    // Register another scalar function
-    auto parse_tables_openssl_version_scalar_function = ScalarFunction("parse_tables_openssl_version", {LogicalType::VARCHAR},
-                                                LogicalType::VARCHAR, ParseTablesOpenSSLVersionScalarFun);
-    ExtensionUtil::RegisterFunction(instance, parse_tables_openssl_version_scalar_function);
 }
 
 void ParseTablesExtension::Load(DuckDB &db) {
