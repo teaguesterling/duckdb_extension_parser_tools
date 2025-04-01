@@ -62,20 +62,20 @@ static unique_ptr<GlobalTableFunctionState> MyInit(ClientContext &context,
 
 static void ExtractTablesFromQueryNode(const QueryNode &node, vector<TableRefResult> &results);
 
-static void ExtractTablesFromRef(const TableRef &ref, vector<TableRefResult> &results, const string &context = "from") {
+static void ExtractTablesFromRef(const TableRef &ref, vector<TableRefResult> &results, const string &context = "from", bool is_top_level = false) {
     switch (ref.type) {
         case TableReferenceType::BASE_TABLE: {
             auto &base = (BaseTableRef &)ref;
             results.push_back(TableRefResult{
                 base.schema_name.empty() ? "main" : base.schema_name,
                 base.table_name,
-                context
+                is_top_level ? "from" : context
             });
             break;
         }
         case TableReferenceType::JOIN: {
             auto &join = (JoinRef &)ref;
-            ExtractTablesFromRef(*join.left, results, "join_left");
+            ExtractTablesFromRef(*join.left, results, "join_left", is_top_level);
             ExtractTablesFromRef(*join.right, results, "join_right");
             break;
         }
@@ -104,7 +104,7 @@ static void ExtractTablesFromQueryNode(const QueryNode &node, vector<TableRefRes
         
 
         if (select_node.from_table) {
-            ExtractTablesFromRef(*select_node.from_table, results, "from");
+            ExtractTablesFromRef(*select_node.from_table, results, "from", true);
         }
     }
 }
