@@ -17,18 +17,19 @@
 
 namespace duckdb {
 
-struct ParseTablesState : public GlobalTableFunctionState {
-    idx_t row = 0;
-};
-
-struct ParseTablesBindData : public TableFunctionData {
-    string sql;
-};
-
 struct TableRefResult {
     string schema;
     string table;
     string context;
+};
+
+struct ParseTablesState : public GlobalTableFunctionState {
+    idx_t row = 0;
+    vector<TableRefResult> results;
+};
+
+struct ParseTablesBindData : public TableFunctionData {
+    string sql;
 };
 
 // BIND function: runs during query planning to decide output schema
@@ -126,36 +127,29 @@ static void MyFunc(ClientContext &context,
     auto &state = (ParseTablesState &)*data.global_state;
     auto &bind_data = (ParseTablesBindData &)*data.bind_data;
 
-    static vector<TableRefResult> results;
-    static bool parsed = false;
-
-    if (!parsed) {
+    if (state.results.empty() && state.row == 0) {
         try {
             Parser parser;
             parser.ParseQuery(bind_data.sql);
-
-            std::cout << "Parsed " << parser.statements.size() << " statements" << std::endl;
-
 
             for (auto &stmt : parser.statements) {
                 if (stmt->type == StatementType::SELECT_STATEMENT) {
                     auto &select_stmt = (SelectStatement &)*stmt;
                     if (select_stmt.node) {
-                        ExtractTablesFromQueryNode(*select_stmt.node, results);
+                        ExtractTablesFromQueryNode(*select_stmt.node, state.results);
                     }
                 }
             }
-            parsed = true;
         } catch (const std::exception &ex) {
             throw InvalidInputException("Failed to parse SQL: %s", ex.what());
         }
     }
 
-    if (state.row >= results.size()) {
+    if (state.row >= state.results.size()) {
         return;
     }
 
-    auto &ref = results[state.row];
+    auto &ref = state.results[state.row];
     output.SetCardinality(1);
     output.SetValue(0, 0, Value(ref.schema));
     output.SetValue(1, 0, Value(ref.table));
