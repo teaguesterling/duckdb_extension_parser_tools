@@ -39,7 +39,6 @@ static unique_ptr<FunctionData> Bind(ClientContext &context,
                                     vector<string> &names) {
                                 
     string sql_input = StringValue::Get(input.inputs[0]);
-    std::cout << "sql_input: " << sql_input << std::endl;
                                                     
     // always return the same columns:
 
@@ -64,13 +63,6 @@ static unique_ptr<GlobalTableFunctionState> MyInit(ClientContext &context,
 static void ExtractTablesFromQueryNode(const QueryNode &node, vector<TableRefResult> &results);
 
 static void ExtractTablesFromRef(const TableRef &ref, vector<TableRefResult> &results, const string &context = "from") {
-    std::cout << "Ref type: " << (int)ref.type << std::endl;
-    if (ref.type == TableReferenceType::BASE_TABLE) {
-        auto &base = (BaseTableRef &)ref;
-        std::cout << "Found base table: " << base.schema_name << "." << base.table_name << std::endl;
-    }
-
-
     switch (ref.type) {
         case TableReferenceType::BASE_TABLE: {
             auto &base = (BaseTableRef &)ref;
@@ -103,11 +95,7 @@ static void ExtractTablesFromQueryNode(const QueryNode &node, vector<TableRefRes
     if (node.type == QueryNodeType::SELECT_NODE) {
         auto &select_node = (SelectNode &)node;
 
-        std::cout << "Extracting from query node" << std::endl;
-
-
         // Handle CTEs
-        
         for (const auto &entry : select_node.cte_map.map) {
             if (entry.second && entry.second->query) {
                 ExtractTablesFromQueryNode(*entry.second->query->node, results);
