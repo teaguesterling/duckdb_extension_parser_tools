@@ -8,6 +8,12 @@
 #include "duckdb/main/extension_util.hpp"
 #include <duckdb/parser/parsed_data/create_scalar_function_info.hpp>
 
+#include "duckdb/parser/parser.hpp"
+#include "duckdb/parser/statement/select_statement.hpp"
+#include "duckdb/parser/query_node/select_node.hpp"
+#include "duckdb/parser/tableref/basetableref.hpp"
+#include "duckdb/parser/tableref/joinref.hpp"
+#include "duckdb/parser/tableref/subqueryref.hpp"
 
 namespace duckdb {
 
@@ -54,31 +60,107 @@ static unique_ptr<GlobalTableFunctionState> MyInit(ClientContext &context,
     return make_uniq<ParseTablesState>();
 }
 
-// EXECUTE function: produces rows
-static void MyFunc(ClientContext &context,
-    TableFunctionInput &data,
-    DataChunk &output) {
+static void ExtractTablesFromQueryNode(const QueryNode &node, vector<TableRefResult> &results);
 
-    auto &state = (ParseTablesState &)*data.global_state;
-
-    std::cout << "row: " << state.row << std::endl;
-
-    auto &bind_data = (ParseTablesBindData &)*data.bind_data;
-
-    std::cout << "Executing for SQL: " << bind_data.sql << std::endl;
-
-    if (state.row >= 1) {
-        return; // no more rows to produce
+static void ExtractTablesFromRef(const TableRef &ref, vector<TableRefResult> &results, const string &context = "from") {
+    std::cout << "Ref type: " << (int)ref.type << std::endl;
+    if (ref.type == TableReferenceType::BASE_TABLE) {
+        auto &base = (BaseTableRef &)ref;
+        std::cout << "Found base table: " << base.schema_name << "." << base.table_name << std::endl;
     }
 
-    // Example: single string column with 1 row
-    // auto row_count = 1;
-    output.SetCardinality(1);
 
-    output.SetValue(0, 0, Value("my_schema"));
-    output.SetValue(1, 0, Value("my_table"));
-    output.SetValue(2, 0, Value("from"));
-    
+    switch (ref.type) {
+        case TableReferenceType::BASE_TABLE: {
+            auto &base = (BaseTableRef &)ref;
+            results.push_back(TableRefResult{
+                base.schema_name.empty() ? "main" : base.schema_name,
+                base.table_name,
+                context
+            });
+            break;
+        }
+        case TableReferenceType::JOIN: {
+            auto &join = (JoinRef &)ref;
+            ExtractTablesFromRef(*join.left, results, "join_left");
+            ExtractTablesFromRef(*join.right, results, "join_right");
+            break;
+        }
+        case TableReferenceType::SUBQUERY: {
+            auto &subquery = (SubqueryRef &)ref;
+            if (subquery.subquery && subquery.subquery->node) {
+                ExtractTablesFromQueryNode(*subquery.subquery->node, results);
+            }
+            break;
+        }
+        default:
+            break;
+    }
+}
+
+static void ExtractTablesFromQueryNode(const QueryNode &node, vector<TableRefResult> &results) {
+    if (node.type == QueryNodeType::SELECT_NODE) {
+        auto &select_node = (SelectNode &)node;
+
+        std::cout << "Extracting from query node" << std::endl;
+
+
+        // Handle CTEs
+        
+        for (const auto &entry : select_node.cte_map.map) {
+            if (entry.second && entry.second->query) {
+                ExtractTablesFromQueryNode(*entry.second->query->node, results);
+            }
+        }
+        
+
+        if (select_node.from_table) {
+            ExtractTablesFromRef(*select_node.from_table, results, "from");
+        }
+    }
+}
+
+static void MyFunc(ClientContext &context,
+                   TableFunctionInput &data,
+                   DataChunk &output) {
+    auto &state = (ParseTablesState &)*data.global_state;
+    auto &bind_data = (ParseTablesBindData &)*data.bind_data;
+
+    static vector<TableRefResult> results;
+    static bool parsed = false;
+
+    if (!parsed) {
+        try {
+            Parser parser;
+            parser.ParseQuery(bind_data.sql);
+
+            std::cout << "Parsed " << parser.statements.size() << " statements" << std::endl;
+
+
+            for (auto &stmt : parser.statements) {
+                if (stmt->type == StatementType::SELECT_STATEMENT) {
+                    auto &select_stmt = (SelectStatement &)*stmt;
+                    if (select_stmt.node) {
+                        ExtractTablesFromQueryNode(*select_stmt.node, results);
+                    }
+                }
+            }
+            parsed = true;
+        } catch (const std::exception &ex) {
+            throw InvalidInputException("Failed to parse SQL: %s", ex.what());
+        }
+    }
+
+    if (state.row >= results.size()) {
+        return;
+    }
+
+    auto &ref = results[state.row];
+    output.SetCardinality(1);
+    output.SetValue(0, 0, Value(ref.schema));
+    output.SetValue(1, 0, Value(ref.table));
+    output.SetValue(2, 0, Value(ref.context));
+
     state.row++;
 }
 
