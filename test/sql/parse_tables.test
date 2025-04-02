@@ -4,20 +4,119 @@
 
 # Before we load the extension, this will fail
 statement error
-SELECT parse_tables('Sam');
+SELECT parse_tables('select 1');
 ----
 Catalog Error: Scalar Function with name parse_tables does not exist!
 
 # Require statement will ensure this test is run with this extension loaded
 require parse_tables
 
-# Confirm the extension works
-query I
-SELECT parse_tables('Sam');
+# simple FROM
+query III
+SELECT * FROM parse_tables('SELECT * FROM my_table;');
 ----
-ParseTables Sam 🐥
+main	my_table	from
 
-query I
-SELECT parse_tables_openssl_version('Michael') ILIKE 'ParseTables Michael, my linked OpenSSL version is OpenSSL%';
+# schema-qualified FROM
+query III
+SELECT * FROM parse_tables('SELECT * FROM my_schema.my_table;');
 ----
-true
+my_schema	my_table	from
+
+# CTE usage
+query III
+SELECT * FROM parse_tables('WITH x AS (SELECT * FROM d JOIN e ON d.id = e.id) SELECT * FROM x;');
+----
+(empty)	x	cte
+main	d	from
+main	e	join_right
+main	x	from_cte
+
+# JOIN between two tables
+query III
+SELECT * FROM parse_tables('SELECT * FROM a JOIN b ON a.id = b.id;');
+----
+main	a	from
+main	b	join_right
+
+# chained JOINs
+query III
+SELECT * FROM parse_tables('SELECT * FROM a JOIN b ON a.id = b.id JOIN c ON b.id = c.id;');
+----
+main	a	from
+main	b	join_right
+main	c	join_right
+
+# subquery and join
+query III
+SELECT * FROM parse_tables('SELECT * FROM (SELECT * FROM f) sub JOIN g ON sub.id = g.id;');
+----
+main	f	from
+main	g	join_right
+
+# mixed qualified and unqualified
+query III
+SELECT * FROM parse_tables('SELECT * FROM h JOIN schema1.i ON h.id = i.id;');
+----
+main	h	from
+schema1	i	join_right
+
+# duplicate references
+query III
+SELECT * FROM parse_tables('SELECT * FROM j JOIN j ON j.id = j.id;');
+----
+main	j	from
+main	j	join_right
+
+# deeply nested subqueries
+query III
+SELECT * FROM parse_tables($$
+    SELECT * FROM (
+        SELECT * FROM (SELECT * FROM k) inner1
+        JOIN (SELECT * FROM l) inner2 ON inner1.id = inner2.id
+    ) final;
+$$);
+----
+main	k	from
+main	l	from
+
+# INSERT INTO ... SELECT
+statement error
+SELECT * FROM parse_tables('INSERT INTO m SELECT * FROM n;');
+----
+parse_tables only supports SELECT statements
+
+# UPDATE with FROM
+statement error
+SELECT * FROM parse_tables('UPDATE o SET x = p.x FROM p WHERE o.id = p.id;');
+----
+parse_tables only supports SELECT statements
+
+# DELETE with USING
+statement error
+SELECT * FROM parse_tables('DELETE FROM q USING r WHERE q.id = r.id;');
+----
+parse_tables only supports SELECT statements
+
+# CREATE VIEW AS SELECT
+statement error
+SELECT * FROM parse_tables('CREATE VIEW v AS SELECT * FROM s JOIN t ON s.id = t.id;');
+----
+parse_tables only supports SELECT statements
+
+# CREATE TABLE AS SELECT
+statement error
+SELECT * FROM parse_tables('CREATE TABLE u AS SELECT * FROM v;');
+----
+parse_tables only supports SELECT statements
+
+# no tables
+query III
+SELECT * FROM parse_tables('SELECT 1;');
+----
+
+# malformed SQL should error
+statement error
+SELECT * FROM parse_tables('SELECT * FROM WHERE');
+----
+syntax error at or near \"WHERE\"","position":"14","error_subtype":"SYNTAX_ERROR
