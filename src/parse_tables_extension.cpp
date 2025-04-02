@@ -57,7 +57,7 @@ struct ParseTablesBindData : public TableFunctionData {
 };
 
 // BIND function: runs during query planning to decide output schema
-static unique_ptr<FunctionData> Bind(ClientContext &context, 
+static unique_ptr<FunctionData> ParseTablesBind(ClientContext &context, 
                                     TableFunctionBindInput &input, 
                                     vector<LogicalType> &return_types, 
                                     vector<string> &names) {
@@ -79,7 +79,7 @@ static unique_ptr<FunctionData> Bind(ClientContext &context,
 }
 
 // INIT function: runs before table function execution
-static unique_ptr<GlobalTableFunctionState> MyInit(ClientContext &context,
+static unique_ptr<GlobalTableFunctionState> ParseTablesInit(ClientContext &context,
     TableFunctionInitInput &input) {
     return make_uniq<ParseTablesState>();
 }
@@ -165,7 +165,7 @@ static void ExtractTablesFromQueryNode(
     }
 }
 
-static void MyFunc(ClientContext &context,
+static void ParseTablesFunction(ClientContext &context,
                    TableFunctionInput &data,
                    DataChunk &output) {
     auto &state = (ParseTablesState &)*data.global_state;
@@ -213,7 +213,7 @@ static void MyFunc(ClientContext &context,
 static void LoadInternal(DatabaseInstance &instance) {
 
     // Register parse_tables
-    TableFunction tf("parse_tables", {LogicalType::VARCHAR}, MyFunc, Bind, MyInit);
+    TableFunction tf("parse_tables", {LogicalType::VARCHAR}, ParseTablesFunction, ParseTablesBind, ParseTablesInit);
     ExtensionUtil::RegisterFunction(instance, tf);
 }
 
