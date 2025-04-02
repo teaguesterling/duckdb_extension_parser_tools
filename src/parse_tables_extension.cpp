@@ -17,10 +17,34 @@
 
 namespace duckdb {
 
+/**
+ * Represents where a table is used in a query.
+ */
+enum class TableContext {
+    From,       // table in from clause
+    JoinLeft,   // table in left side of a join
+    JoinRight,  // table in right side of a join
+    FromCTE,    // table in from clause that references a CTE
+    CTE,        // table is defined as a CTE
+    Subquery    // table in a subquery
+};
+
+inline const char *ToString(TableContext context) {
+    switch (context) {
+        case TableContext::From: return "from";
+        case TableContext::JoinLeft: return "join_left";
+        case TableContext::JoinRight: return "join_right";
+        case TableContext::FromCTE: return "from_cte";
+        case TableContext::CTE: return "cte";
+        case TableContext::Subquery: return "subquery";
+        default: return "unknown";
+    }
+}
+
 struct TableRefResult {
     string schema;
     string table;
-    string context;
+    TableContext context;
 };
 
 struct ParseTablesState : public GlobalTableFunctionState {
@@ -63,14 +87,14 @@ static unique_ptr<GlobalTableFunctionState> MyInit(ClientContext &context,
 static void ExtractTablesFromQueryNode(
     const duckdb::QueryNode &node,
     std::vector<TableRefResult> &results,
-    const std::string &context = "from",
+    const TableContext context = TableContext::From,
     const duckdb::CommonTableExpressionMap *cte_map = nullptr
 );
 
 static void ExtractTablesFromRef(
     const duckdb::TableRef &ref,
     std::vector<TableRefResult> &results,
-    const std::string &context = "from",
+    const TableContext context = TableContext::From,
     bool is_top_level = false,
     const duckdb::CommonTableExpressionMap *cte_map = nullptr
 ) {
@@ -79,12 +103,12 @@ static void ExtractTablesFromRef(
     switch (ref.type) {
         case TableReferenceType::BASE_TABLE: {
             auto &base = (BaseTableRef &)ref;
-            std::string context_label = context;
+            TableContext context_label = context;
 
             if (cte_map && cte_map->map.find(base.table_name) != cte_map->map.end()) {
-                context_label = "from_cte";
+                context_label = TableContext::FromCTE;
             } else if (is_top_level) {
-                context_label = "from";
+                context_label = TableContext::From;
             }
 
             results.push_back(TableRefResult{
@@ -96,14 +120,14 @@ static void ExtractTablesFromRef(
         }
         case TableReferenceType::JOIN: {
             auto &join = (JoinRef &)ref;
-            ExtractTablesFromRef(*join.left, results, "join_left", is_top_level, cte_map);
-            ExtractTablesFromRef(*join.right, results, "join_right", false, cte_map);
+            ExtractTablesFromRef(*join.left, results, TableContext::JoinLeft, is_top_level, cte_map);
+            ExtractTablesFromRef(*join.right, results, TableContext::JoinRight, false, cte_map);
             break;
         }
         case TableReferenceType::SUBQUERY: {
             auto &subquery = (SubqueryRef &)ref;
             if (subquery.subquery && subquery.subquery->node) {
-                ExtractTablesFromQueryNode(*subquery.subquery->node, results, "subquery", cte_map);
+                ExtractTablesFromQueryNode(*subquery.subquery->node, results, TableContext::Subquery, cte_map);
             }
             break;
         }
@@ -116,7 +140,7 @@ static void ExtractTablesFromRef(
 static void ExtractTablesFromQueryNode(
     const duckdb::QueryNode &node,
     std::vector<TableRefResult> &results,
-    const std::string &context,
+    const TableContext context,
     const duckdb::CommonTableExpressionMap *cte_map
 ) {
     using namespace duckdb;
@@ -127,11 +151,11 @@ static void ExtractTablesFromQueryNode(
         // Emit CTE definitions
         for (const auto &entry : select_node.cte_map.map) {
             results.push_back(TableRefResult{
-                "", entry.first, "cte"
+                "", entry.first, TableContext::CTE
             });
 
             if (entry.second && entry.second->query && entry.second->query->node) {
-                ExtractTablesFromQueryNode(*entry.second->query->node, results, "from", &select_node.cte_map);
+                ExtractTablesFromQueryNode(*entry.second->query->node, results, TableContext::From, &select_node.cte_map);
             }
         }
 
@@ -177,7 +201,7 @@ static void MyFunc(ClientContext &context,
     output.SetCardinality(1);
     output.SetValue(0, 0, Value(ref.schema));
     output.SetValue(1, 0, Value(ref.table));
-    output.SetValue(2, 0, Value(ref.context));
+    output.SetValue(2, 0, Value(ToString(ref.context)));
 
     state.row++;
 }
