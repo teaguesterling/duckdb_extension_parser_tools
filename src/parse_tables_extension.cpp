@@ -7,13 +7,13 @@
 #include "duckdb/function/scalar_function.hpp"
 #include "duckdb/main/extension_util.hpp"
 #include <duckdb/parser/parsed_data/create_scalar_function_info.hpp>
-
 #include "duckdb/parser/parser.hpp"
 #include "duckdb/parser/statement/select_statement.hpp"
 #include "duckdb/parser/query_node/select_node.hpp"
 #include "duckdb/parser/tableref/basetableref.hpp"
 #include "duckdb/parser/tableref/joinref.hpp"
 #include "duckdb/parser/tableref/subqueryref.hpp"
+#include "duckdb/parser/statement/insert_statement.hpp"
 
 namespace duckdb {
 
@@ -60,29 +60,50 @@ static unique_ptr<GlobalTableFunctionState> MyInit(ClientContext &context,
     return make_uniq<ParseTablesState>();
 }
 
-static void ExtractTablesFromQueryNode(const QueryNode &node, vector<TableRefResult> &results);
+static void ExtractTablesFromQueryNode(
+    const duckdb::QueryNode &node,
+    std::vector<TableRefResult> &results,
+    const std::string &context = "from",
+    const duckdb::CommonTableExpressionMap *cte_map = nullptr
+);
 
-static void ExtractTablesFromRef(const TableRef &ref, vector<TableRefResult> &results, const string &context = "from", bool is_top_level = false) {
+static void ExtractTablesFromRef(
+    const duckdb::TableRef &ref,
+    std::vector<TableRefResult> &results,
+    const std::string &context = "from",
+    bool is_top_level = false,
+    const duckdb::CommonTableExpressionMap *cte_map = nullptr
+) {
+    using namespace duckdb;
+
     switch (ref.type) {
         case TableReferenceType::BASE_TABLE: {
             auto &base = (BaseTableRef &)ref;
+            std::string context_label = context;
+
+            if (cte_map && cte_map->map.find(base.table_name) != cte_map->map.end()) {
+                context_label = "from_cte";
+            } else if (is_top_level) {
+                context_label = "from";
+            }
+
             results.push_back(TableRefResult{
                 base.schema_name.empty() ? "main" : base.schema_name,
                 base.table_name,
-                is_top_level ? "from" : context
+                context_label
             });
             break;
         }
         case TableReferenceType::JOIN: {
             auto &join = (JoinRef &)ref;
-            ExtractTablesFromRef(*join.left, results, "join_left", is_top_level);
-            ExtractTablesFromRef(*join.right, results, "join_right");
+            ExtractTablesFromRef(*join.left, results, "join_left", is_top_level, cte_map);
+            ExtractTablesFromRef(*join.right, results, "join_right", false, cte_map);
             break;
         }
         case TableReferenceType::SUBQUERY: {
             auto &subquery = (SubqueryRef &)ref;
             if (subquery.subquery && subquery.subquery->node) {
-                ExtractTablesFromQueryNode(*subquery.subquery->node, results);
+                ExtractTablesFromQueryNode(*subquery.subquery->node, results, "subquery", cte_map);
             }
             break;
         }
@@ -91,20 +112,31 @@ static void ExtractTablesFromRef(const TableRef &ref, vector<TableRefResult> &re
     }
 }
 
-static void ExtractTablesFromQueryNode(const QueryNode &node, vector<TableRefResult> &results) {
+
+static void ExtractTablesFromQueryNode(
+    const duckdb::QueryNode &node,
+    std::vector<TableRefResult> &results,
+    const std::string &context,
+    const duckdb::CommonTableExpressionMap *cte_map
+) {
+    using namespace duckdb;
+
     if (node.type == QueryNodeType::SELECT_NODE) {
         auto &select_node = (SelectNode &)node;
 
-        // Handle CTEs
+        // Emit CTE definitions
         for (const auto &entry : select_node.cte_map.map) {
-            if (entry.second && entry.second->query) {
-                ExtractTablesFromQueryNode(*entry.second->query->node, results);
+            results.push_back(TableRefResult{
+                "", entry.first, "cte"
+            });
+
+            if (entry.second && entry.second->query && entry.second->query->node) {
+                ExtractTablesFromQueryNode(*entry.second->query->node, results, "from", &select_node.cte_map);
             }
         }
-        
 
         if (select_node.from_table) {
-            ExtractTablesFromRef(*select_node.from_table, results, "from", true);
+            ExtractTablesFromRef(*select_node.from_table, results, context, true, &select_node.cte_map);
         }
     }
 }
@@ -121,6 +153,10 @@ static void MyFunc(ClientContext &context,
             parser.ParseQuery(bind_data.sql);
 
             for (auto &stmt : parser.statements) {
+                if (stmt->type != StatementType::SELECT_STATEMENT) {
+                    throw InvalidInputException("parse_tables only supports SELECT statements");
+                }
+                
                 if (stmt->type == StatementType::SELECT_STATEMENT) {
                     auto &select_stmt = (SelectStatement &)*stmt;
                     if (select_stmt.node) {
