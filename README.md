@@ -1,4 +1,4 @@
-# ParseTables
+# Parser Tools
 
 This repository is based on https://github.com/duckdb/extension-template, check it out if you want to build and ship your own DuckDB extension.
 
@@ -26,11 +26,11 @@ The main binaries that will be built are:
 ```sh
 ./build/release/duckdb
 ./build/release/test/unittest
-./build/release/extension/parse_tables/parse_tables.duckdb_extension
+./build/release/extension/parser/parser.duckdb_extension
 ```
 - `duckdb` is the binary for the duckdb shell with the extension code automatically loaded.
 - `unittest` is the test runner of duckdb. Again, the extension is already linked into the binary.
-- `parse_tables.duckdb_extension` is the loadable binary as it would be distributed.
+- `parser.duckdb_extension` is the loadable binary as it would be distributed.
 
 ## Running the extension
 To run the extension code, simply start the shell with `./build/release/duckdb`.

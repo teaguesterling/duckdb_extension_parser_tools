@@ -9,7 +9,7 @@ SELECT parse_tables('select 1');
 Catalog Error: Scalar Function with name parse_tables does not exist!
 
 # Require statement will ensure this test is run with this extension loaded
-require parse_tables
+require parser_tools
 
 # simple FROM
 query III

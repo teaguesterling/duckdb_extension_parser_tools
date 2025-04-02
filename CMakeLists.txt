@@ -1,7 +1,7 @@
 cmake_minimum_required(VERSION 3.5)
 
 # Set extension name here
-set(TARGET_NAME parse_tables)
+set(TARGET_NAME parser_tools)
 
 set(EXTENSION_NAME ${TARGET_NAME}_extension)
 set(LOADABLE_EXTENSION_NAME ${TARGET_NAME}_loadable_extension)
@@ -10,7 +10,7 @@ project(${TARGET_NAME})
 include_directories(src/include)
 
 set(EXTENSION_SOURCES 
-  src/parse_tables_extension.cpp
+  src/parser_tools_extension.cpp
   src/parse_tables.cpp
 )
 

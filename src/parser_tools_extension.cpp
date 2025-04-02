@@ -1,6 +1,6 @@
 #define DUCKDB_EXTENSION_MAIN
 
-#include "parse_tables_extension.hpp"
+#include "parser_tools_extension.hpp"
 #include "parse_tables.hpp"
 #include "duckdb.hpp"
 #include "duckdb/common/exception.hpp"
@@ -24,17 +24,17 @@ static void LoadInternal(DatabaseInstance &instance) {
     RegisterParseTablesFunction(instance);
 }
 
-void ParseTablesExtension::Load(DuckDB &db) {
+void ParserToolsExtension::Load(DuckDB &db) {
 	LoadInternal(*db.instance);
 }
 
-std::string ParseTablesExtension::Name() {
-	return "parse_tables";
+std::string ParserToolsExtension::Name() {
+	return "parser";
 }
 
-std::string ParseTablesExtension::Version() const {
-#ifdef EXT_VERSION_PARSE_TABLES
-	return EXT_VERSION_PARSE_TABLES;
+std::string ParserToolsExtension::Version() const {
+#ifdef EXT_VERSION_PARSER_TOOLS
+	return EXT_VERSION_PARSER_TOOLS;
 #else
 	return "";
 #endif
@@ -44,12 +44,12 @@ std::string ParseTablesExtension::Version() const {
 
 extern "C" {
 
-DUCKDB_EXTENSION_API void parse_tables_init(duckdb::DatabaseInstance &db) {
+DUCKDB_EXTENSION_API void parser_tools_init(duckdb::DatabaseInstance &db) {
     duckdb::DuckDB db_wrapper(db);
-    db_wrapper.LoadExtension<duckdb::ParseTablesExtension>();
+    db_wrapper.LoadExtension<duckdb::ParserToolsExtension>();
 }
 
-DUCKDB_EXTENSION_API const char *parse_tables_version() {
+DUCKDB_EXTENSION_API const char *parser_tools_version() {
 	return duckdb::DuckDB::LibraryVersion();
 }
 }
