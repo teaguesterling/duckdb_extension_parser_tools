@@ -1,86 +1,144 @@
 # Parser Tools
 
-This repository is based on https://github.com/duckdb/extension-template, check it out if you want to build and ship your own DuckDB extension.
+An experimental DuckDB extension that exposes functionality from DuckDB's native SQL parser.
 
----
+## Overview
 
-This extension, ParseTables, allow you to ... <extension_goal>.
+`parser_tools` is a DuckDB extension designed to provide SQL parsing capabilities within the database. It allows you to analyze SQL queries and extract structural information directly in SQL. Currently, it includes a single table function: `parse_tables`, which extracts table references from a given SQL query. Future versions may expose additional aspects of the parsed query structure.
 
+## Features
 
-## Building
-### Managing dependencies
-DuckDB extensions uses VCPKG for dependency management. Enabling VCPKG is very simple: follow the [installation instructions](https://vcpkg.io/en/getting-started) or just run the following:
-```shell
-git clone https://github.com/Microsoft/vcpkg.git
-./vcpkg/bootstrap-vcpkg.sh
-export VCPKG_TOOLCHAIN_PATH=`pwd`/vcpkg/scripts/buildsystems/vcpkg.cmake
+- Extract table references from a SQL query
+- See the **context** in which each table is used (e.g. `FROM`, `JOIN`, etc.)
+- Includes **schema**, **table**, and **context** information
+- Built on DuckDB's native SQL parser
+- Simple SQL interface — no external tooling required
+
+## Installation
+
+```sql
+INSTALL 'parser_tools';
+LOAD 'parser_tools';
 ```
-Note: VCPKG is only required for extensions that want to rely on it for dependency management. If you want to develop an extension without dependencies, or want to do your own dependency management, just skip this step. Note that the example extension uses VCPKG to build with a dependency for instructive purposes, so when skipping this step the build may not work without removing the dependency.
+
+## Usage
+
+### Parse table references from a query
+#### Simple example
+
+```sql
+SELECT * FROM parse_tables('SELECT * FROM MyTable');
+```
+
+##### Output
+
+```
+┌─────────┬─────────┬─────────┐
+│ schema  │  table  │ context │
+│ varchar │ varchar │ varchar │
+├─────────┼─────────┼─────────┤
+│ main    │ MyTable │ from    │
+└─────────┴─────────┴─────────┘
+```
+
+This tells you that `MyTable` in the `main` schema was used in the `FROM` clause of the query.
+
+#### CTE Example
+```sql
+select * from parse_tables('with EarlyAdopters as (select * from Users where id < 10) select * from EarlyAdopters;');
+```
+
+##### Output
+```
+┌─────────┬───────────────┬──────────┐
+│ schema  │     table     │ context  │
+│ varchar │    varchar    │ varchar  │
+├─────────┼───────────────┼──────────┤
+│         │ EarlyAdopters │ cte      │
+│ main    │ Users         │ from     │
+│ main    │ EarlyAdopters │ from_cte │
+└─────────┴───────────────┴──────────┘
+```
+This tells us a few things: 
+* `EarlyAdopters` was defined as a CTE. 
+* The `Users` table was referenced in a from clause.
+* `EarlyAdopters` was referenced in a from clause (but it's a cte, not a table).
+
+## Function Reference
+
+### `parse_tables(query TEXT) → TABLE(schema TEXT, table TEXT, context TEXT)`
+
+Parses the given SQL query and returns a list of all referenced tables along with:
+
+- `schema`: The schema name (e.g., `main`)
+- `table`: The table name
+- `context`: Where in the query the table is used. Possible values include:
+    * from: The table appears in the FROM clause
+    * joinleft: The table is on the left side of a JOIN
+    * joinright: The table is on the right side of a JOIN
+    * fromcte: The table appears in the FROM clause, but is a reference to a Common Table Expression (CTE)
+        * `with US_Sales()
+    * cte: The table is defined as a CTE
+    * subquery: The table is used inside a subquery
+
+
+## Development
 
 ### Build steps
-Now to build the extension, run:
+To build the extension, run:
 ```sh
-make
+GEN=ninja make
 ```
 The main binaries that will be built are:
 ```sh
 ./build/release/duckdb
 ./build/release/test/unittest
-./build/release/extension/parser/parser.duckdb_extension
+./build/release/extension/parser_tools/parser_tools.duckdb_extension
 ```
 - `duckdb` is the binary for the duckdb shell with the extension code automatically loaded.
 - `unittest` is the test runner of duckdb. Again, the extension is already linked into the binary.
-- `parser.duckdb_extension` is the loadable binary as it would be distributed.
+- `parser_tools.duckdb_extension` is the loadable binary as it would be distributed.
 
 ## Running the extension
-To run the extension code, simply start the shell with `./build/release/duckdb`.
+To run the extension code, simply start the shell with `./build/release/duckdb` (which has the parser_tools extension built-in).
 
-Now we can use the features from the extension directly in DuckDB. The template contains a single scalar function `parse_tables()` that takes a string arguments and returns a string:
+Now we can use the features from the extension directly in DuckDB:
 ```
-D select parse_tables('Jane') as result;
-┌───────────────┐
-│    result     │
-│    varchar    │
-├───────────────┤
-│ ParseTables Jane 🐥 │
-└───────────────┘
+D select * from parse_tables('select * from MyTable');
+┌─────────┬─────────┬─────────┐
+│ schema  │  table  │ context │
+│ varchar │ varchar │ varchar │
+├─────────┼─────────┼─────────┤
+│ main    │ MyTable │ from    │
+└─────────┴─────────┴─────────┘
+```
+
+## Running the extension from a duckdb distribution
+To run the extension dev build from an existing distribution of duckdb (e.g. cli):
+```
+$ duckdb -unsigned
+
+D install parser_tools from './build/release/repository/v1.2.1/osx_amd64/parser_tools.duckdb_extension';
+D load parser_tools;
+
+D select * from parse_tables('select * from MyTable');
+┌─────────┬─────────┬─────────┐
+│ schema  │  table  │ context │
+│ varchar │ varchar │ varchar │
+├─────────┼─────────┼─────────┤
+│ main    │ MyTable │ from    │
+└─────────┴─────────┴─────────┘
 ```
 
 ## Running the tests
-Different tests can be created for DuckDB extensions. The primary way of testing DuckDB extensions should be the SQL tests in `./test/sql`. These SQL tests can be run using:
+See [Writing Tests](https://duckdb.org/docs/stable/dev/sqllogictest/writing_tests.html) to learn more about duckdb's testing philosophy. To that end, we define tests in sql at: [test/sql](test/sql/). 
+
+The tests can be run with:
 ```sh
 make test
 ```
 
-### Installing the deployed binaries
-To install your extension binaries from S3, you will need to do two things. Firstly, DuckDB should be launched with the
-`allow_unsigned_extensions` option set to true. How to set this will depend on the client you're using. Some examples:
-
-CLI:
-```shell
-duckdb -unsigned
-```
-
-Python:
-```python
-con = duckdb.connect(':memory:', config={'allow_unsigned_extensions' : 'true'})
-```
-
-NodeJS:
-```js
-db = new duckdb.Database(':memory:', {"allow_unsigned_extensions": "true"});
-```
-
-Secondly, you will need to set the repository endpoint in DuckDB to the HTTP url of your bucket + version of the extension
-you want to install. To do this run the following SQL query in DuckDB:
-```sql
-SET custom_extension_repository='bucket.s3.eu-west-1.amazonaws.com/<your_extension_name>/latest';
-```
-Note that the `/latest` path will allow you to install the latest extension version available for your current version of
-DuckDB. To specify a specific version, you can pass the version instead.
-
-After running these steps, you can install and load your extension using the regular INSTALL/LOAD commands in DuckDB:
-```sql
-INSTALL parse_tables
-LOAD parse_tables
+and easily re-ran as changes are made with:
+```sh
+GEN=ninja make && make test
 ```
