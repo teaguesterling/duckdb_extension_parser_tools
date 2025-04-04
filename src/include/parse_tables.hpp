@@ -27,5 +27,6 @@ struct TableRefResult {
 void ExtractTablesFromSQL(const std::string &sql, std::vector<TableRefResult> &results);
 
 void RegisterParseTablesFunction(duckdb::DatabaseInstance &db);
+void RegisterParseTableScalarFunction(DatabaseInstance &db);
 
 } // namespace duckdb

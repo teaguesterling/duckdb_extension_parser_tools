@@ -22,6 +22,7 @@ namespace duckdb {
 
 static void LoadInternal(DatabaseInstance &instance) {
     RegisterParseTablesFunction(instance);
+	RegisterParseTableScalarFunction(instance);
 }
 
 void ParserToolsExtension::Load(DuckDB &db) {

@@ -7,6 +7,8 @@
 #include "duckdb/parser/tableref/joinref.hpp"
 #include "duckdb/parser/tableref/subqueryref.hpp"
 #include "duckdb/main/extension_util.hpp"
+#include "duckdb/function/scalar/nested_functions.hpp"
+
 
 namespace duckdb {
 
@@ -140,6 +142,20 @@ static void ExtractTablesFromQueryNode(
     }
 }
 
+void ExtractTablesFromSQL(const std::string &sql, std::vector<TableRefResult> &results) {
+    Parser parser;
+    parser.ParseQuery(sql);
+
+    for (auto &stmt : parser.statements) {
+        if (stmt->type == StatementType::SELECT_STATEMENT) {
+            auto &select_stmt = (SelectStatement &)*stmt;
+            if (select_stmt.node) {
+                ExtractTablesFromQueryNode(*select_stmt.node, results);
+            }
+        }
+    }
+}
+
 static void ParseTablesFunction(ClientContext &context,
                    TableFunctionInput &data,
                    DataChunk &output) {
@@ -147,25 +163,7 @@ static void ParseTablesFunction(ClientContext &context,
     auto &bind_data = (ParseTablesBindData &)*data.bind_data;
 
     if (state.results.empty() && state.row == 0) {
-        try {
-            Parser parser;
-            parser.ParseQuery(bind_data.sql);
-
-            for (auto &stmt : parser.statements) {
-                if (stmt->type != StatementType::SELECT_STATEMENT) {
-                    throw InvalidInputException("parse_tables only supports SELECT statements");
-                }
-                
-                if (stmt->type == StatementType::SELECT_STATEMENT) {
-                    auto &select_stmt = (SelectStatement &)*stmt;
-                    if (select_stmt.node) {
-                        ExtractTablesFromQueryNode(*select_stmt.node, state.results);
-                    }
-                }
-            }
-        } catch (const std::exception &ex) {
-            throw InvalidInputException("Failed to parse SQL: %s", ex.what());
-        }
+        ExtractTablesFromSQL(bind_data.sql, state.results);
     }
 
     if (state.row >= state.results.size()) {
@@ -181,12 +179,52 @@ static void ParseTablesFunction(ClientContext &context,
     state.row++;
 }
 
+static void ParseTablesScalarFunction(DataChunk &args, ExpressionState &state, Vector &result) {
+    // Execute does the heavy lifting of iterating over the input data
+    // and calling the provided lambda function for each input value.
+    // The lambda function is responsible for parsing the SQL query and
+    // extracting the table names.
+    UnaryExecutor::Execute<string_t, list_entry_t>(args.data[0], result, args.size(), 
+    [&result](string_t query) -> list_entry_t {
+        // Parse the SQL query and extract table names
+        auto query_string = query.GetString();
+        std::vector<TableRefResult> parsed_tables;
+        ExtractTablesFromSQL(query_string, parsed_tables);
+    
+        auto current_size = ListVector::GetListSize(result);
+        auto number_of_tables = parsed_tables.size();
+        auto new_size = current_size + number_of_tables;
+
+        // grow list if needed
+        if (ListVector::GetListCapacity(result) < new_size) {
+            ListVector::Reserve(result, new_size);
+        }
+
+        // Write the string into the child vector
+        auto tables = FlatVector::GetData<string_t>(ListVector::GetEntry(result));
+        for (size_t i = 0; i < parsed_tables.size(); i++) {
+            auto &table = parsed_tables[i];
+            tables[current_size + i] = StringVector::AddStringOrBlob(ListVector::GetEntry(result), table.table);
+        }
+
+        // Update size
+        ListVector::SetListSize(result, new_size);
+
+        return list_entry_t(current_size, number_of_tables); 
+    });
+}
+
 // Extension scaffolding
 // ---------------------------------------------------
 
 void RegisterParseTablesFunction(DatabaseInstance &db) {
     TableFunction tf("parse_tables", {LogicalType::VARCHAR}, ParseTablesFunction, ParseTablesBind, ParseTablesInit);
     ExtensionUtil::RegisterFunction(db, tf);
+}
+
+void RegisterParseTableScalarFunction(DatabaseInstance &db) {
+    ScalarFunction sf( "parse_tables", {LogicalType::VARCHAR}, LogicalType::LIST(LogicalType::VARCHAR), ParseTablesScalarFunction);
+    ExtensionUtil::RegisterFunction(db, sf);
 }
 
 } // namespace duckdb
