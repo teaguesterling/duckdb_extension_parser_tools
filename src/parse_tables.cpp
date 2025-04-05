@@ -24,6 +24,16 @@ inline const char *ToString(TableContext context) {
     }
 }
 
+inline const TableContext FromString(const char *context) {
+    if (strcmp(context, "from") == 0) return TableContext::From;
+    if (strcmp(context, "join_left") == 0) return TableContext::JoinLeft;
+    if (strcmp(context, "join_right") == 0) return TableContext::JoinRight;
+    if (strcmp(context, "from_cte") == 0) return TableContext::FromCTE;
+    if (strcmp(context, "cte") == 0) return TableContext::CTE;
+    if (strcmp(context, "subquery") == 0) return TableContext::Subquery;
+    throw InternalException("Unknown table context: %s", context);
+}
+
 struct ParseTablesState : public GlobalTableFunctionState {
     idx_t row = 0;
     vector<TableRefResult> results;
@@ -156,6 +166,22 @@ void ExtractTablesFromSQL(const std::string &sql, std::vector<TableRefResult> &r
     }
 }
 
+void ExtractTablesFromSQL(const std::string & sql, std::vector<TableRefResult> &result, std::unordered_set<std::string> excluded_types) {
+    std::vector<TableRefResult> temp_result;
+    ExtractTablesFromSQL(sql, temp_result);
+    std::unordered_set<TableContext> e_types;
+
+    for (auto &type : excluded_types) {
+        e_types.insert(FromString(type.c_str()));
+    }
+
+    for (auto &table : temp_result) {
+        if (e_types.count(table.context) == 0) {
+            result.push_back(table);
+        }
+    }
+}
+
 static void ParseTablesFunction(ClientContext &context,
                    TableFunctionInput &data,
                    DataChunk &output) {
@@ -180,16 +206,37 @@ static void ParseTablesFunction(ClientContext &context,
 }
 
 static void ParseTablesScalarFunction(DataChunk &args, ExpressionState &state, Vector &result) {
+    Vector flag(LogicalType::BOOLEAN); 
+    
+    // Allow for the optional boolean argument. if not provided, default to true
+    if (args.ColumnCount() == 1) {
+        // create a default argument to pass below. we'll use a constant vector since all values are the same
+        Vector c(LogicalType::BOOLEAN);
+        c.Reference(Value::BOOLEAN(true));
+        ConstantVector::Reference(flag, c, 0, args.size());
+    } else if (args.ColumnCount() == 2) {
+        flag.Reference(args.data[1]);
+    } else {
+        throw InvalidInputException("parse_tables() expects 1 or 2 arguments");
+    }
+
     // Execute does the heavy lifting of iterating over the input data
     // and calling the provided lambda function for each input value.
     // The lambda function is responsible for parsing the SQL query and
     // extracting the table names.
-    UnaryExecutor::Execute<string_t, list_entry_t>(args.data[0], result, args.size(), 
-    [&result](string_t query) -> list_entry_t {
+    BinaryExecutor::Execute<string_t, bool, list_entry_t>(args.data[0], flag, result, args.size(), 
+    [&result](string_t query, bool exclude_cte) -> list_entry_t {
         // Parse the SQL query and extract table names
         auto query_string = query.GetString();
         std::vector<TableRefResult> parsed_tables;
-        ExtractTablesFromSQL(query_string, parsed_tables);
+        if (exclude_cte) {
+            std::unordered_set<std::string> excluded_types;
+            excluded_types.insert("cte");
+            ExtractTablesFromSQL(query_string, parsed_tables, excluded_types);
+        } else {
+            ExtractTablesFromSQL(query_string, parsed_tables);
+        }
+        
     
         auto current_size = ListVector::GetListSize(result);
         auto number_of_tables = parsed_tables.size();
@@ -223,8 +270,14 @@ void RegisterParseTablesFunction(DatabaseInstance &db) {
 }
 
 void RegisterParseTableScalarFunction(DatabaseInstance &db) {
-    ScalarFunction sf( "parse_tables", {LogicalType::VARCHAR}, LogicalType::LIST(LogicalType::VARCHAR), ParseTablesScalarFunction);
-    ExtensionUtil::RegisterFunction(db, sf);
+    // parse tables is overloaded, allowing for an optional boolean argument
+    // that indicates whether to include CTEs in the result
+    // usage: parse_tables(sql_query [, include_cte])
+    ScalarFunctionSet set("parse_tables");
+    set.AddFunction(ScalarFunction({LogicalType::VARCHAR}, LogicalType::LIST(LogicalType::VARCHAR), ParseTablesScalarFunction));
+    set.AddFunction(ScalarFunction({LogicalType::VARCHAR, LogicalType::BOOLEAN}, LogicalType::LIST(LogicalType::VARCHAR), ParseTablesScalarFunction));
+
+    ExtensionUtil::RegisterFunction(db, set);
 }
 
 } // namespace duckdb

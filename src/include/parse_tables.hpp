@@ -17,6 +17,7 @@ enum class TableContext {
 };
 
 const char *ToString(TableContext context);
+const TableContext FromString(const char *context);
 
 struct TableRefResult {
     std::string schema;
