@@ -162,6 +162,8 @@ void ExtractTablesFromSQL(const std::string &sql, std::vector<TableRefResult> &r
             if (select_stmt.node) {
                 ExtractTablesFromQueryNode(*select_stmt.node, results);
             }
+        } else {
+            throw InvalidInputException("parse_tables only supports SELECT statements");        
         }
     }
 }
