@@ -71,13 +71,6 @@ static unique_ptr<GlobalTableFunctionState> ParseTablesInit(ClientContext &conte
     return make_uniq<ParseTablesState>();
 }
 
-static void ExtractTablesFromQueryNode(
-    const duckdb::QueryNode &node,
-    std::vector<TableRefResult> &results,
-    const TableContext context = TableContext::From,
-    const duckdb::CommonTableExpressionMap *cte_map = nullptr
-);
-
 static void ExtractTablesFromRef(
     const duckdb::TableRef &ref,
     std::vector<TableRefResult> &results,
@@ -152,7 +145,7 @@ static void ExtractTablesFromQueryNode(
     }
 }
 
-void ExtractTablesFromSQL(const std::string &sql, std::vector<TableRefResult> &results) {
+static void ExtractTablesFromSQL(const std::string &sql, std::vector<TableRefResult> &results) {
     Parser parser;
     parser.ParseQuery(sql);
 
@@ -168,7 +161,7 @@ void ExtractTablesFromSQL(const std::string &sql, std::vector<TableRefResult> &r
     }
 }
 
-void ExtractTablesFromSQL(const std::string & sql, std::vector<TableRefResult> &result, std::unordered_set<std::string> excluded_types) {
+static void ExtractTablesFromSQL(const std::string & sql, std::vector<TableRefResult> &result, std::unordered_set<std::string> excluded_types) {
     std::vector<TableRefResult> temp_result;
     ExtractTablesFromSQL(sql, temp_result);
     std::unordered_set<TableContext> e_types;

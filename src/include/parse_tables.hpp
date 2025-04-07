@@ -25,7 +25,13 @@ struct TableRefResult {
     TableContext context;
 };
 
-void ExtractTablesFromSQL(const std::string &sql, std::vector<TableRefResult> &results);
+static void ExtractTablesFromSQL(const std::string &sql, std::vector<TableRefResult> &results);
+static void ExtractTablesFromQueryNode(
+    const duckdb::QueryNode &node,
+    std::vector<TableRefResult> &results,
+    const TableContext context = TableContext::From,
+    const duckdb::CommonTableExpressionMap *cte_map = nullptr
+);
 
 void RegisterParseTablesFunction(duckdb::DatabaseInstance &db);
 void RegisterParseTableScalarFunction(DatabaseInstance &db);
