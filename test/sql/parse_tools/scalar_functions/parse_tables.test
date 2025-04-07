@@ -4,7 +4,7 @@
 
 # Before we load the extension, this will fail
 statement error
-SELECT parse_tables('select 1');
+SELECT parse_tables('select * from MyTable');
 ----
 Catalog Error: Scalar Function with name parse_tables does not exist!
 
@@ -13,5 +13,18 @@ require parser_tools
 
 query I
 SELECT parse_tables('select * from MyTable');
+----
+[{'schema': main, 'table': MyTable, 'context': from}]
+
+# demonstrate list filter functionality
+query I
+SELECT parse_tables('select * from MyTable t inner join Other o on o.id = t.id');
+----
+[{'schema': main, 'table': MyTable, 'context': from}, {'schema': main, 'table': Other, 'context': join_right}]
+
+
+# demonstrate list filter functionality
+query I
+SELECT list_filter(parse_tables('select * from MyTable t inner join Other o on o.id = t.id'),t -> t.context = 'from') AS filtered_tables;
 ----
 [{'schema': main, 'table': MyTable, 'context': from}]
