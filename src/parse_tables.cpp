@@ -261,6 +261,54 @@ static void ParseTablesScalarFunction(DataChunk &args, ExpressionState &state, V
     });
 }
 
+static void ParseTablesScalarFunction_struct(DataChunk &args, ExpressionState &state, Vector &result) {
+    UnaryExecutor::Execute<string_t, list_entry_t>(args.data[0], result, args.size(),
+    [&result](string_t query) -> list_entry_t {
+        // Parse the SQL query and extract table names
+        auto query_string = query.GetString();
+        std::vector<TableRefResult> parsed_tables;
+        ExtractTablesFromSQL(query_string, parsed_tables);    
+
+        auto current_size = ListVector::GetListSize(result);
+        auto number_of_tables = parsed_tables.size();
+        auto new_size = current_size + number_of_tables;
+
+        // Grow list vector if needed
+        if (ListVector::GetListCapacity(result) < new_size) {
+            ListVector::Reserve(result, new_size);
+        }
+
+        // Get the struct child vector of the list
+        auto &struct_vector = ListVector::GetEntry(result);
+
+        // Ensure list size is updated
+        ListVector::SetListSize(result, new_size);
+
+        // Get the fields in the STRUCT
+        auto &entries = StructVector::GetEntries(struct_vector);
+        auto &table_entry = *entries[0];  // "table" field
+        auto &schema_entry = *entries[1]; // "schema" field
+        auto &context_entry = *entries[2]; // "context" field
+
+
+        auto table_data = FlatVector::GetData<string_t>(table_entry);
+        auto schema_data = FlatVector::GetData<string_t>(schema_entry);
+        auto context_data = FlatVector::GetData<string_t>(context_entry);
+
+
+        for (size_t i = 0; i < number_of_tables; i++) {
+            const auto &table = parsed_tables[i];
+            auto idx = current_size + i;
+
+            table_data[idx] = StringVector::AddStringOrBlob(table_entry, table.table);
+            schema_data[idx] = StringVector::AddStringOrBlob(schema_entry, table.schema);
+            context_data[idx] = StringVector::AddStringOrBlob(context_entry, ToString(table.context));
+        }
+
+        return list_entry_t(current_size, number_of_tables);
+    });
+}
+
 // Extension scaffolding
 // ---------------------------------------------------
 
@@ -273,11 +321,19 @@ void RegisterParseTableScalarFunction(DatabaseInstance &db) {
     // parse tables is overloaded, allowing for an optional boolean argument
     // that indicates whether to include CTEs in the result
     // usage: parse_tables(sql_query [, include_cte])
-    ScalarFunctionSet set("parse_tables");
+    ScalarFunctionSet set("parse_table_names");
     set.AddFunction(ScalarFunction({LogicalType::VARCHAR}, LogicalType::LIST(LogicalType::VARCHAR), ParseTablesScalarFunction));
     set.AddFunction(ScalarFunction({LogicalType::VARCHAR, LogicalType::BOOLEAN}, LogicalType::LIST(LogicalType::VARCHAR), ParseTablesScalarFunction));
 
     ExtensionUtil::RegisterFunction(db, set);
+
+    auto return_type = LogicalType::LIST(LogicalType::STRUCT({
+        {"schema", LogicalType::VARCHAR},
+        {"table", LogicalType::VARCHAR},
+        {"context", LogicalType::VARCHAR}
+    }));
+    ScalarFunction sf("parse_tables", {LogicalType::VARCHAR}, return_type, ParseTablesScalarFunction_struct);
+    ExtensionUtil::RegisterFunction(db, sf);
 }
 
 } // namespace duckdb
