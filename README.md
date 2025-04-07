@@ -22,8 +22,8 @@ An experimental DuckDB extension that exposes functionality from DuckDB's native
 ## Installation
 
 ```sql
-INSTALL 'parser_tools';
-LOAD 'parser_tools';
+INSTALL parser_tools FROM community;;
+LOAD parser_tools;
 ```
 
 ## Usage
