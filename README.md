@@ -4,7 +4,7 @@ An experimental DuckDB extension that exposes functionality from DuckDB's native
 
 ## Overview
 
-`parser_tools` is a DuckDB extension designed to provide SQL parsing capabilities within the database. It allows you to analyze SQL queries and extract structural information directly in SQL. Currently, it includes a single table function: `parse_tables`, which extracts table references from a given SQL query. Future versions may expose additional aspects of the parsed query structure.
+`parser_tools` is a DuckDB extension designed to provide SQL parsing capabilities within the database. It allows you to analyze SQL queries and extract structural information directly in SQL. This extension provides one table function and two scalar functions for parsing SQL and extracting referenced tables: `parse_tables` (table function and scalar function), and `parse_table_names` (see [Functions](#functions) below). Future versions may expose additional aspects of the parsed query structure.
 
 ## Features
 
@@ -13,6 +13,11 @@ An experimental DuckDB extension that exposes functionality from DuckDB's native
 - Includes **schema**, **table**, and **context** information
 - Built on DuckDB's native SQL parser
 - Simple SQL interface — no external tooling required
+
+
+## Known Limitations
+- Only `SELECT` statements are supported
+- Only returns table references (the full parse tree is not exposed)
 
 ## Installation
 
@@ -64,23 +69,106 @@ This tells us a few things:
 * The `Users` table was referenced in a from clause.
 * `EarlyAdopters` was referenced in a from clause (but it's a cte, not a table).
 
-## Function Reference
+## Context
+Context helps give context of where the table was used in the query:
+- `from`: table in the main `FROM` clause
+- `join_left`: left side of a `JOIN`
+- `join_right`: right side of a `JOIN`
+- `cte`: a Common Table Expression being defined
+- `from_cte`: usage of a CTE as if it were a table
+- `subquery`: table reference inside a subquery
 
-### `parse_tables(query TEXT) → TABLE(schema TEXT, table TEXT, context TEXT)`
+## Functions
 
-Parses the given SQL query and returns a list of all referenced tables along with:
+This extension provides one table function and two scalar functions for parsing SQL and extracting referenced tables.
 
-- `schema`: The schema name (e.g., `main`)
-- `table`: The table name
-- `context`: Where in the query the table is used. Possible values include:
-    * from: The table appears in the FROM clause
-    * joinleft: The table is on the left side of a JOIN
-    * joinright: The table is on the right side of a JOIN
-    * fromcte: The table appears in the FROM clause, but is a reference to a Common Table Expression (CTE)
-        * `with US_Sales()
-    * cte: The table is defined as a CTE
-    * subquery: The table is used inside a subquery
+### `parse_tables(sql_query)` – Table Function
 
+Parses a SQL `SELECT` query and returns all referenced tables along with their context of use (e.g. `from`, `join_left`, `cte`, etc.).
+
+#### Usage
+```sql
+SELECT * FROM parse_tables('SELECT * FROM my_table JOIN other_table USING (id)');
+```
+
+#### Returns
+A table with:
+- `schema`: schema name (default `"main"` if unspecified)
+- `table`: table name
+- `context`: where the table appears in the query  
+  One of: `from`, `join_left`, `join_right`, `from_cte`, `cte`, `subquery`
+
+#### Example
+```sql
+SELECT * FROM parse_tables($$
+    WITH cte1 AS (SELECT * FROM x)
+    SELECT * FROM cte1 JOIN y ON cte1.id = y.id
+$$);
+```
+
+| schema | table | context    |
+|--------|--------|------------|
+|        | cte1  | cte        |
+| main   | x     | from       |
+| main   | y     | join_right |
+|        | cte1  | from_cte   |
+
+---
+
+### `parse_table_names(sql_query [, exclude_cte=true])` – Scalar Function
+
+Returns a list of table names (strings) referenced in the SQL query. Can optionally exclude CTE-related references.
+
+#### Usage
+```sql
+SELECT parse_table_names('SELECT * FROM my_table');
+----
+['my_table']
+```
+
+#### Optional Parameter
+```sql
+SELECT parse_table_names('with cte_test as(select 1) select * from MyTable, cte_test', false); -- include CTEs
+---- 
+[cte_test, MyTable, cte_test]
+```
+
+#### Returns
+A list of strings, each being a table name.
+
+#### Example
+```sql
+SELECT parse_table_names('SELECT * FROM a JOIN b USING (id)');
+----
+['a', 'b']
+```
+
+---
+
+### `parse_tables(sql_query)` – Scalar Function (Structured)
+
+Similar to the table function, but returns a **list of structs** instead of a result table. Each struct contains:
+
+- `schema` (VARCHAR)
+- `table` (VARCHAR)
+- `context` (VARCHAR)
+
+#### Usage
+```sql
+SELECT parse_tables('select * from MyTable');
+----
+[{'schema': main, 'table': MyTable, 'context': from}]
+```
+
+#### Returns
+A list of STRUCTs with schema, table name, and context.
+
+#### Example
+```sql
+SELECT parse_tables('select * from MyTable t inner join Other o on o.id = t.id');
+----
+[{'schema': main, 'table': MyTable, 'context': from}, {'schema': main, 'table': Other, 'context': join_right}]
+```
 
 ## Development
 
