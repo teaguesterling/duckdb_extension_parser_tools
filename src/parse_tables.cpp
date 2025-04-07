@@ -288,13 +288,12 @@ static void ParseTablesScalarFunction_struct(DataChunk &args, ExpressionState &s
 
         // Get the fields in the STRUCT
         auto &entries = StructVector::GetEntries(struct_vector);
-        auto &table_entry = *entries[0];  // "table" field
-        auto &schema_entry = *entries[1]; // "schema" field
+        auto &schema_entry = *entries[0]; // "schema" field
+        auto &table_entry = *entries[1];  // "table" field
         auto &context_entry = *entries[2]; // "context" field
 
-
-        auto table_data = FlatVector::GetData<string_t>(table_entry);
         auto schema_data = FlatVector::GetData<string_t>(schema_entry);
+        auto table_data = FlatVector::GetData<string_t>(table_entry);
         auto context_data = FlatVector::GetData<string_t>(context_entry);
 
 
@@ -302,8 +301,8 @@ static void ParseTablesScalarFunction_struct(DataChunk &args, ExpressionState &s
             const auto &table = parsed_tables[i];
             auto idx = current_size + i;
 
-            table_data[idx] = StringVector::AddStringOrBlob(table_entry, table.table);
             schema_data[idx] = StringVector::AddStringOrBlob(schema_entry, table.schema);
+            table_data[idx] = StringVector::AddStringOrBlob(table_entry, table.table);
             context_data[idx] = StringVector::AddStringOrBlob(context_entry, ToString(table.context));
         }
 
