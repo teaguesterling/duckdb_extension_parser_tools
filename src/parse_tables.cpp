@@ -234,6 +234,7 @@ static void ParseTablesScalarFunction(DataChunk &args, ExpressionState &state, V
         if (exclude_cte) {
             std::unordered_set<std::string> excluded_types;
             excluded_types.insert("cte");
+            excluded_types.insert("from_cte");
             ExtractTablesFromSQL(query_string, parsed_tables, excluded_types);
         } else {
             ExtractTablesFromSQL(query_string, parsed_tables);

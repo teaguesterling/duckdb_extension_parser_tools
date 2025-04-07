@@ -15,3 +15,21 @@ query I
 SELECT parse_table_names('select * from MyTable');
 ----
 [MyTable]
+
+# default behavior: exclude CTE
+query I
+SELECT parse_table_names('with cte_test as(select 1) select * from MyTable, cte_test');
+----
+[MyTable]
+
+# default behavior: exclude CTE (explicitly specify true)
+query I
+SELECT parse_table_names('with cte_test as(select 1) select * from MyTable, cte_test', true);
+----
+[MyTable]
+
+# test optional bool argument: don't exclude CTE tables
+query I
+SELECT parse_table_names('with cte_test as(select 1) select * from MyTable, cte_test', false);
+----
+[cte_test, MyTable, cte_test]
