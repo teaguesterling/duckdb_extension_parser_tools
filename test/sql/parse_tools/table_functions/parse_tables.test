@@ -119,4 +119,4 @@ SELECT * FROM parse_tables('SELECT 1;');
 statement error
 SELECT * FROM parse_tables('SELECT * FROM WHERE');
 ----
-syntax error at or near \"WHERE\"","position":"14","error_subtype":"SYNTAX_ERROR
+Parser Error: syntax error at or near "WHERE"
