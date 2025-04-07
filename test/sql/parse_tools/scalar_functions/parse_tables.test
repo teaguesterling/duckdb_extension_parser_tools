@@ -10,3 +10,8 @@ Catalog Error: Scalar Function with name parse_tables does not exist!
 
 # Require statement will ensure this test is run with this extension loaded
 require parser_tools
+
+query I
+SELECT parse_tables('select * from MyTable');
+----
+[{'schema': main, 'table': MyTable, 'context': from}]

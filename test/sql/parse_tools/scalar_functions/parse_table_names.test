@@ -10,3 +10,8 @@ Catalog Error: Scalar Function with name parse_table_names does not exist!
 
 # Require statement will ensure this test is run with this extension loaded
 require parser_tools
+
+query I
+SELECT parse_table_names('select * from MyTable');
+----
+[MyTable]
