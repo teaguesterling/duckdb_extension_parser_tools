@@ -68,3 +68,9 @@ query I
 select parse_tables('SELECT 1;');
 ----
 []
+
+# malformed SQL should not error
+query I
+SELECT parse_tables('SELECT * FROM WHERE');
+----
+[]

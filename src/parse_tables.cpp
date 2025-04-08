@@ -147,7 +147,14 @@ static void ExtractTablesFromQueryNode(
 
 static void ExtractTablesFromSQL(const std::string &sql, std::vector<TableRefResult> &results) {
     Parser parser;
-    parser.ParseQuery(sql);
+
+    try {
+        parser.ParseQuery(sql);
+    } catch (const ParserException &ex) {
+        // swallow parser exceptions to make this function more robust. is_parsable can be used if needed
+        return; 
+    }
+    
 
     for (auto &stmt : parser.statements) {
         if (stmt->type == StatementType::SELECT_STATEMENT) {

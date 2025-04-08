@@ -110,8 +110,7 @@ query III
 SELECT * FROM parse_tables('SELECT 1;');
 ----
 
-# malformed SQL should error
-statement error
+# malformed SQL should not error
+query III
 SELECT * FROM parse_tables('SELECT * FROM WHERE');
 ----
-Parser Error: syntax error at or near "WHERE"

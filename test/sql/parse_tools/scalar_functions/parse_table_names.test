@@ -72,3 +72,9 @@ query I
 select parse_table_names('SELECT 1;');
 ----
 []
+
+# malformed SQL should not error
+query I
+SELECT parse_table_names('SELECT * FROM WHERE');
+----
+[]
