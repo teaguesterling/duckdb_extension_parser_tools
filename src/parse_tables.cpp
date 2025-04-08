@@ -300,6 +300,19 @@ static void ParseTablesScalarFunction_struct(DataChunk &args, ExpressionState &s
     });
 }
 
+static void IsParsableFunction(DataChunk &args, ExpressionState &state, Vector &result) {
+    UnaryExecutor::Execute<string_t, bool>(args.data[0], result, args.size(),
+    [](string_t query) -> bool {
+        try {
+            Parser parser;
+            parser.ParseQuery(query.GetString());
+            return true;
+        } catch (const std::exception &) {
+            return false;
+        }
+    });
+}
+
 // Extension scaffolding
 // ---------------------------------------------------
 
@@ -309,15 +322,15 @@ void RegisterParseTablesFunction(DatabaseInstance &db) {
 }
 
 void RegisterParseTableScalarFunction(DatabaseInstance &db) {
-    // parse tables is overloaded, allowing for an optional boolean argument
+    // parse_table_names is overloaded, allowing for an optional boolean argument
     // that indicates whether to include CTEs in the result
     // usage: parse_tables(sql_query [, include_cte])
     ScalarFunctionSet set("parse_table_names");
     set.AddFunction(ScalarFunction({LogicalType::VARCHAR}, LogicalType::LIST(LogicalType::VARCHAR), ParseTablesScalarFunction));
     set.AddFunction(ScalarFunction({LogicalType::VARCHAR, LogicalType::BOOLEAN}, LogicalType::LIST(LogicalType::VARCHAR), ParseTablesScalarFunction));
-
     ExtensionUtil::RegisterFunction(db, set);
 
+    // parse_tables_struct is a scalar function that returns a list of structs
     auto return_type = LogicalType::LIST(LogicalType::STRUCT({
         {"schema", LogicalType::VARCHAR},
         {"table", LogicalType::VARCHAR},
@@ -325,6 +338,10 @@ void RegisterParseTableScalarFunction(DatabaseInstance &db) {
     }));
     ScalarFunction sf("parse_tables", {LogicalType::VARCHAR}, return_type, ParseTablesScalarFunction_struct);
     ExtensionUtil::RegisterFunction(db, sf);
+
+    // is_parsable is a scalar function that returns a boolean indicating whether the SQL query is parsable (no parse errors)
+    ScalarFunction is_parsable("is_parsable", {LogicalType::VARCHAR}, LogicalType::BOOLEAN, IsParsableFunction);
+    ExtensionUtil::RegisterFunction(db, is_parsable);
 }
 
 } // namespace duckdb

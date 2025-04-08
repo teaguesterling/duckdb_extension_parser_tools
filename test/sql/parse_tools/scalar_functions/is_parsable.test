@@ -1,0 +1,40 @@
+# name: test/sql/parser_tools/scalar_functions/is_parsable.test
+# description: test is_parsable scalar function
+# group: [parse_table_names]
+
+# Before we load the extension, this will fail
+statement error
+SELECT is_parsable('select * from MyTable');
+----
+Catalog Error: Scalar Function with name is_parsable does not exist!
+
+# Require statement will ensure this test is run with this extension loaded
+require parser_tools
+
+
+# base case
+query I
+SELECT is_parsable('select * from MyTable');
+----
+true
+
+# false
+# -----
+
+query I
+SELECT is_parsable('select * from');
+----
+false
+
+query I
+SELECT is_parsable('select');
+----
+false
+
+# true
+# -----
+
+query I
+SELECT is_parsable('select 1');
+----
+true
