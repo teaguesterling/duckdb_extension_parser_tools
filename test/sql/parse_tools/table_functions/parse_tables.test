@@ -81,34 +81,29 @@ main	k	from
 main	l	from
 
 # INSERT INTO ... SELECT
-statement error
+query III
 SELECT * FROM parse_tables('INSERT INTO m SELECT * FROM n;');
 ----
-parse_tables only supports SELECT statements
 
 # UPDATE with FROM
-statement error
+query III
 SELECT * FROM parse_tables('UPDATE o SET x = p.x FROM p WHERE o.id = p.id;');
 ----
-parse_tables only supports SELECT statements
 
 # DELETE with USING
-statement error
+query III
 SELECT * FROM parse_tables('DELETE FROM q USING r WHERE q.id = r.id;');
 ----
-parse_tables only supports SELECT statements
 
 # CREATE VIEW AS SELECT
-statement error
+query III
 SELECT * FROM parse_tables('CREATE VIEW v AS SELECT * FROM s JOIN t ON s.id = t.id;');
 ----
-parse_tables only supports SELECT statements
 
 # CREATE TABLE AS SELECT
-statement error
+query III
 SELECT * FROM parse_tables('CREATE TABLE u AS SELECT * FROM v;');
 ----
-parse_tables only supports SELECT statements
 
 # no tables
 query III

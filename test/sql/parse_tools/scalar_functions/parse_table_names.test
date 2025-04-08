@@ -33,3 +33,42 @@ query I
 SELECT parse_table_names('with cte_test as(select 1) select * from MyTable, cte_test', false);
 ----
 [cte_test, MyTable, cte_test]
+
+# Unsupported 
+# -----------
+
+# INSERT INTO ... SELECT
+query I
+select parse_table_names('INSERT INTO m SELECT * FROM n;');
+----
+[]
+
+# UPDATE with FROM
+query I
+select parse_table_names('UPDATE o SET x = p.x FROM p WHERE o.id = p.id;');
+----
+[]
+
+# DELETE with USING
+query I
+select parse_table_names('DELETE FROM q USING r WHERE q.id = r.id;');
+----
+[]
+
+# CREATE VIEW AS SELECT
+query I
+select parse_table_names('CREATE VIEW v AS SELECT * FROM s JOIN t ON s.id = t.id;');
+----
+[]
+
+# CREATE TABLE AS SELECT
+query I
+select parse_table_names('CREATE TABLE u AS SELECT * FROM v;');
+----
+[]
+
+# no tables
+query I
+select parse_table_names('SELECT 1;');
+----
+[]

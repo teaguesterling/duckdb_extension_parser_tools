@@ -155,8 +155,6 @@ static void ExtractTablesFromSQL(const std::string &sql, std::vector<TableRefRes
             if (select_stmt.node) {
                 ExtractTablesFromQueryNode(*select_stmt.node, results);
             }
-        } else {
-            throw InvalidInputException("parse_tables only supports SELECT statements");        
         }
     }
 }
@@ -225,9 +223,7 @@ static void ParseTablesScalarFunction(DataChunk &args, ExpressionState &state, V
         auto query_string = query.GetString();
         std::vector<TableRefResult> parsed_tables;
         if (exclude_cte) {
-            std::unordered_set<std::string> excluded_types;
-            excluded_types.insert("cte");
-            excluded_types.insert("from_cte");
+            std::unordered_set<std::string> excluded_types = {"cte", "from_cte"};
             ExtractTablesFromSQL(query_string, parsed_tables, excluded_types);
         } else {
             ExtractTablesFromSQL(query_string, parsed_tables);

@@ -28,3 +28,43 @@ query I
 SELECT list_filter(parse_tables('select * from MyTable t inner join Other o on o.id = t.id'),t -> t.context = 'from') AS filtered_tables;
 ----
 [{'schema': main, 'table': MyTable, 'context': from}]
+
+
+# Unsupported 
+# -----------
+
+# INSERT INTO ... SELECT
+query I
+select parse_tables('INSERT INTO m SELECT * FROM n;');
+----
+[]
+
+# UPDATE with FROM
+query I
+select parse_tables('UPDATE o SET x = p.x FROM p WHERE o.id = p.id;');
+----
+[]
+
+# DELETE with USING
+query I
+select parse_tables('DELETE FROM q USING r WHERE q.id = r.id;');
+----
+[]
+
+# CREATE VIEW AS SELECT
+query I
+select parse_tables('CREATE VIEW v AS SELECT * FROM s JOIN t ON s.id = t.id;');
+----
+[]
+
+# CREATE TABLE AS SELECT
+query I
+select parse_tables('CREATE TABLE u AS SELECT * FROM v;');
+----
+[]
+
+# no tables
+query I
+select parse_tables('SELECT 1;');
+----
+[]
