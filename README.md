@@ -80,7 +80,9 @@ Context helps give context of where the table was used in the query:
 
 ## Functions
 
-This extension provides one table function and two scalar functions for parsing SQL and extracting referenced tables.
+This extension provides one table function and three scalar functions for parsing SQL and extracting referenced tables. 
+
+In general, errors (e.g. Parse Exception) will not be exposed to the user, but instead will result in an empty result. This simplifies batch processing. When validity is needed, [is_parsable](#is_parsablesql_query--scalar-function) can be used. 
 
 ### `parse_tables(sql_query)` – Table Function
 
@@ -169,6 +171,46 @@ SELECT parse_tables('select * from MyTable t inner join Other o on o.id = t.id')
 ----
 [{'schema': main, 'table': MyTable, 'context': from}, {'schema': main, 'table': Other, 'context': join_right}]
 ```
+
+
+### `is_parsable(sql_query)` – Scalar Function
+
+Checks whether a given SQL string is syntactically valid (i.e. can be parsed by DuckDB).
+
+#### Usage
+```sql
+SELECT is_parsable('SELECT * FROM users');
+-- true
+
+SELECT is_parsable('SELEKT * FROM users');
+-- false
+```
+
+#### Returns
+A boolean indicating whether the input SQL string is parsable (`true`) or not (`false`).
+
+#### Example
+```sql
+SELECT query, is_parsable(query) AS valid
+FROM (VALUES
+    ('SELECT * FROM good_table'),
+    ('BAD SQL SELECT *'),
+    ('WITH cte AS (SELECT 1) SELECT * FROM cte')
+) AS t(query);
+```
+
+##### Output
+```
+┌───────────────────────────────────────────────┬────────┐
+│                    query                      │ valid  │
+│                   varchar                     │ boolean│
+├───────────────────────────────────────────────┼────────┤
+│ SELECT * FROM good_table                      │ true   │
+│ BAD SQL SELECT *                              │ false  │
+│ WITH cte AS (SELECT 1) SELECT * FROM cte      │ true   │
+└───────────────────────────────────────────────┴────────┘
+```
+
 
 ## Development
 
