@@ -1,0 +1,103 @@
+# name: test/sql/parser_tools/tables_functions/parse_where.test
+# description: test parse_where and parse_where_detailed table functions
+# group: [parse_where]
+
+# Before we load the extension, this will fail
+statement error
+SELECT * FROM parse_where('SELECT * FROM my_table WHERE x > 1;');
+----
+Catalog Error: Table Function with name parse_where does not exist!
+
+# Require statement will ensure this test is run with this extension loaded
+require parser_tools
+
+# Simple comparison
+query III
+SELECT * FROM parse_where('SELECT * FROM my_table WHERE x > 1;');
+----
+(x > 1)	(empty)	WHERE
+
+# Simple comparison with detailed parser
+query IIIII
+SELECT * FROM parse_where_detailed('SELECT * FROM my_table WHERE x > 1;');
+----
+x	>	1	(empty)	WHERE
+
+# Multiple conditions with AND
+query III
+SELECT * FROM parse_where('SELECT * FROM my_table WHERE x > 1 AND y < 100;');
+----
+(x > 1)	(empty)	WHERE
+(y < 100)	(empty)	WHERE
+
+# Multiple conditions with AND (detailed)
+query IIIII
+SELECT * FROM parse_where_detailed('SELECT * FROM my_table WHERE x > 1 AND y < 100;');
+----
+x	>	1	(empty)	WHERE
+y	<	100	(empty)	WHERE
+
+# BETWEEN condition
+query III
+SELECT * FROM parse_where('SELECT * FROM my_table WHERE x BETWEEN 1 AND 100;');
+----
+(x BETWEEN 1 AND 100)	(empty)	WHERE
+
+# BETWEEN condition (detailed)
+query IIIII
+SELECT * FROM parse_where_detailed('SELECT * FROM my_table WHERE x BETWEEN 1 AND 100;');
+----
+x	>=	1	(empty)	WHERE
+x	<=	100	(empty)	WHERE
+
+# Complex conditions with AND/OR
+query III
+SELECT * FROM parse_where('SELECT * FROM my_table WHERE (x > 1 AND y < 100) OR z = 42;');
+----
+(x > 1)	(empty)	WHERE
+(y < 100)	(empty)	WHERE
+(z = 42)	(empty)	WHERE
+
+# Complex conditions with AND/OR (detailed)
+query IIIII
+SELECT * FROM parse_where_detailed('SELECT * FROM my_table WHERE (x > 1 AND y < 100) OR z = 42;');
+----
+x	>	1	(empty)	WHERE
+y	<	100	(empty)	WHERE
+z	=	42	(empty)	WHERE
+
+# Multiple operators
+query III
+SELECT * FROM parse_where('SELECT * FROM my_table WHERE x >= 1 AND x <= 100 AND y != 42;');
+----
+(x >= 1)	(empty)	WHERE
+(x <= 100)	(empty)	WHERE
+(y != 42)	(empty)	WHERE
+
+# Multiple operators (detailed)
+query IIIII
+SELECT * FROM parse_where_detailed('SELECT * FROM my_table WHERE x >= 1 AND x <= 100 AND y != 42;');
+----
+x	>=	1	(empty)	WHERE
+x	<=	100	(empty)	WHERE
+y	!=	42	(empty)	WHERE
+
+# No WHERE clause
+query III
+SELECT * FROM parse_where('SELECT * FROM my_table;');
+----
+
+# No WHERE clause (detailed)
+query IIIII
+SELECT * FROM parse_where_detailed('SELECT * FROM my_table;');
+----
+
+# Malformed SQL should not error
+query III
+SELECT * FROM parse_where('SELECT * FROM my_table WHERE');
+----
+
+# Malformed SQL should not error (detailed)
+query IIIII
+SELECT * FROM parse_where_detailed('SELECT * FROM my_table WHERE');
+---- 

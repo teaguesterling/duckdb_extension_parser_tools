@@ -435,11 +435,21 @@ static void ParseWhereDetailedFunction(ClientContext &context,
                 if (select_stmt.node) {
                     if (select_stmt.node->type == QueryNodeType::SELECT_NODE) {
                         auto &select_node = (SelectNode &)*select_stmt.node;
+                        string table_name = "(empty)";  // Default table name
+                        
+                        // Try to extract table name from FROM clause
+                        if (select_node.from_table) {
+                            if (select_node.from_table->type == TableReferenceType::BASE_TABLE) {
+                                auto &base_table = (BaseTableRef &)*select_node.from_table;
+                                table_name = base_table.table_name;
+                            }
+                        }
+                        
                         if (select_node.where_clause) {
-                            ExtractDetailedWhereConditionsFromExpression(*select_node.where_clause, state.results, "WHERE");
+                            ExtractDetailedWhereConditionsFromExpression(*select_node.where_clause, state.results, "WHERE", table_name);
                         }
                         if (select_node.having) {
-                            ExtractDetailedWhereConditionsFromExpression(*select_node.having, state.results, "HAVING");
+                            ExtractDetailedWhereConditionsFromExpression(*select_node.having, state.results, "HAVING", table_name);
                         }
                     }
                 }
