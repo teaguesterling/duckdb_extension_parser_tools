@@ -12,6 +12,7 @@ include_directories(src/include)
 set(EXTENSION_SOURCES 
   src/parser_tools_extension.cpp
   src/parse_tables.cpp
+  src/parse_where.cpp
 )
 
 build_static_extension(${TARGET_NAME} ${EXTENSION_SOURCES})
