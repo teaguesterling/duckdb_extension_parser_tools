@@ -18,6 +18,7 @@
 #include "duckdb/parser/expression/lambda_expression.hpp"
 #include "duckdb/parser/expression/positional_reference_expression.hpp"
 #include "duckdb/parser/expression/parameter_expression.hpp"
+#include "duckdb/parser/tableref/basetableref.hpp"
 #include "duckdb/main/extension_util.hpp"
 
 namespace duckdb {
@@ -132,21 +133,24 @@ static void ExtractWhereConditionsFromQueryNode(
 ) {
     if (node.type == QueryNodeType::SELECT_NODE) {
         auto &select_node = (SelectNode &)node;
+        string table_name = "(empty)";  // Default table name
+
+        // Extract table name from FROM clause
+        if (select_node.from_table) {
+            if (select_node.from_table->type == TableReferenceType::BASE_TABLE) {
+                auto &base = (BaseTableRef &)*select_node.from_table;
+                table_name = base.table_name;
+            }
+        }
 
         // Extract WHERE conditions
         if (select_node.where_clause) {
-            ExtractWhereConditionsFromExpression(*select_node.where_clause, results, "WHERE");
+            ExtractWhereConditionsFromExpression(*select_node.where_clause, results, "WHERE", table_name);
         }
 
         // Extract HAVING conditions
         if (select_node.having) {
-            ExtractWhereConditionsFromExpression(*select_node.having, results, "HAVING");
-        }
-
-        // Process subqueries in FROM clause
-        if (select_node.from_table) {
-            // TODO: Extract table names from FROM clause to associate with conditions
-            // This would require tracking table aliases and their relationships
+            ExtractWhereConditionsFromExpression(*select_node.having, results, "HAVING", table_name);
         }
     }
 }

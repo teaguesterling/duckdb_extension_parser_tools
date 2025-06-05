@@ -15,72 +15,72 @@ require parser_tools
 query III
 SELECT * FROM parse_where('SELECT * FROM my_table WHERE x > 1;');
 ----
-(x > 1)	(empty)	WHERE
+(x > 1)	my_table	WHERE
 
 # Simple comparison with detailed parser
 query IIIII
 SELECT * FROM parse_where_detailed('SELECT * FROM my_table WHERE x > 1;');
 ----
-x	>	1	(empty)	WHERE
+x	>	1	my_table	WHERE
 
 # Multiple conditions with AND
 query III
 SELECT * FROM parse_where('SELECT * FROM my_table WHERE x > 1 AND y < 100;');
 ----
-(x > 1)	(empty)	WHERE
-(y < 100)	(empty)	WHERE
+(x > 1)	my_table	WHERE
+(y < 100)	my_table	WHERE
 
 # Multiple conditions with AND (detailed)
 query IIIII
 SELECT * FROM parse_where_detailed('SELECT * FROM my_table WHERE x > 1 AND y < 100;');
 ----
-x	>	1	(empty)	WHERE
-y	<	100	(empty)	WHERE
+x	>	1	my_table	WHERE
+y	<	100	my_table	WHERE
 
 # BETWEEN condition
 query III
 SELECT * FROM parse_where('SELECT * FROM my_table WHERE x BETWEEN 1 AND 100;');
 ----
-(x BETWEEN 1 AND 100)	(empty)	WHERE
+(x BETWEEN 1 AND 100)	my_table	WHERE
 
 # BETWEEN condition (detailed)
 query IIIII
 SELECT * FROM parse_where_detailed('SELECT * FROM my_table WHERE x BETWEEN 1 AND 100;');
 ----
-x	>=	1	(empty)	WHERE
-x	<=	100	(empty)	WHERE
+x	>=	1	my_table	WHERE
+x	<=	100	my_table	WHERE
 
 # Complex conditions with AND/OR
 query III
 SELECT * FROM parse_where('SELECT * FROM my_table WHERE (x > 1 AND y < 100) OR z = 42;');
 ----
-(x > 1)	(empty)	WHERE
-(y < 100)	(empty)	WHERE
-(z = 42)	(empty)	WHERE
+(x > 1)	my_table	WHERE
+(y < 100)	my_table	WHERE
+(z = 42)	my_table	WHERE
 
 # Complex conditions with AND/OR (detailed)
 query IIIII
 SELECT * FROM parse_where_detailed('SELECT * FROM my_table WHERE (x > 1 AND y < 100) OR z = 42;');
 ----
-x	>	1	(empty)	WHERE
-y	<	100	(empty)	WHERE
-z	=	42	(empty)	WHERE
+x	>	1	my_table	WHERE
+y	<	100	my_table	WHERE
+z	=	42	my_table	WHERE
 
 # Multiple operators
 query III
 SELECT * FROM parse_where('SELECT * FROM my_table WHERE x >= 1 AND x <= 100 AND y != 42;');
 ----
-(x >= 1)	(empty)	WHERE
-(x <= 100)	(empty)	WHERE
-(y != 42)	(empty)	WHERE
+(x >= 1)	my_table	WHERE
+(x <= 100)	my_table	WHERE
+(y != 42)	my_table	WHERE
 
 # Multiple operators (detailed)
 query IIIII
 SELECT * FROM parse_where_detailed('SELECT * FROM my_table WHERE x >= 1 AND x <= 100 AND y != 42;');
 ----
-x	>=	1	(empty)	WHERE
-x	<=	100	(empty)	WHERE
-y	!=	42	(empty)	WHERE
+x	>=	1	my_table	WHERE
+x	<=	100	my_table	WHERE
+y	!=	42	my_table	WHERE
 
 # No WHERE clause
 query III
