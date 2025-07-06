@@ -4,20 +4,23 @@ An experimental DuckDB extension that exposes functionality from DuckDB's native
 
 ## Overview
 
-`parser_tools` is a DuckDB extension designed to provide SQL parsing capabilities within the database. It allows you to analyze SQL queries and extract structural information directly in SQL. This extension provides one table function and two scalar functions for parsing SQL and extracting referenced tables: `parse_tables` (table function and scalar function), and `parse_table_names` (see [Functions](#functions) below). Future versions may expose additional aspects of the parsed query structure.
+`parser_tools` is a DuckDB extension designed to provide SQL parsing capabilities within the database. It allows you to analyze SQL queries and extract structural information directly in SQL. This extension provides parsing functions for tables, WHERE clauses, and function calls (see [Functions](#functions) below).
 
 ## Features
 
-- Extract table references from a SQL query
-- See the **context** in which each table is used (e.g. `FROM`, `JOIN`, etc.)
-- Includes **schema**, **table**, and **context** information
+- **Extract table references** from a SQL query with context information (e.g. `FROM`, `JOIN`, etc.)
+- **Extract function calls** from a SQL query with context information (e.g. `SELECT`, `WHERE`, `HAVING`, etc.)
+- **Parse WHERE clauses** to extract conditions and operators
+- Support for **window functions**, **nested functions**, and **CTEs**
+- Includes **schema**, **name**, and **context** information for all extractions
 - Built on DuckDB's native SQL parser
 - Simple SQL interface — no external tooling required
 
 
 ## Known Limitations
-- Only `SELECT` statements are supported
-- Only returns table references (the full parse tree is not exposed)
+- Only `SELECT` statements are supported for table and function parsing
+- WHERE clause parsing supports additional statement types
+- Full parse tree is not exposed (only specific structural elements)
 
 ## Installation
 
@@ -70,7 +73,10 @@ This tells us a few things:
 * `EarlyAdopters` was referenced in a from clause (but it's a cte, not a table).
 
 ## Context
-Context helps give context of where the table was used in the query:
+
+Context helps identify where elements are used in the query.
+
+### Table Context
 - `from`: table in the main `FROM` clause
 - `join_left`: left side of a `JOIN`
 - `join_right`: right side of a `JOIN`
@@ -78,13 +84,115 @@ Context helps give context of where the table was used in the query:
 - `from_cte`: usage of a CTE as if it were a table
 - `subquery`: table reference inside a subquery
 
+### Function Context  
+- `select`: function in a `SELECT` clause
+- `where`: function in a `WHERE` clause  
+- `having`: function in a `HAVING` clause
+- `order_by`: function in an `ORDER BY` clause
+- `group_by`: function in a `GROUP BY` clause
+- `nested`: function call nested within another function
+
 ## Functions
 
-This extension provides one table function and three scalar functions for parsing SQL and extracting referenced tables. 
+This extension provides parsing functions for tables, functions, and WHERE clauses. Each category includes both table functions (for detailed results) and scalar functions (for programmatic use).
 
-In general, errors (e.g. Parse Exception) will not be exposed to the user, but instead will result in an empty result. This simplifies batch processing. When validity is needed, [is_parsable](#is_parsablesql_query--scalar-function) can be used. 
+In general, errors (e.g. Parse Exception) will not be exposed to the user, but instead will result in an empty result. This simplifies batch processing. When validity is needed, [is_parsable](#is_parsablesql_query--scalar-function) can be used.
 
-### `parse_tables(sql_query)` – Table Function
+### Function Parsing Functions
+
+These functions extract function calls from SQL queries, including window functions and nested function calls.
+
+#### `parse_functions(sql_query)` – Table Function
+
+Parses a SQL `SELECT` query and returns all function calls along with their context of use (e.g. `select`, `where`, `having`, `order_by`, etc.).
+
+##### Usage
+```sql
+SELECT * FROM parse_functions('SELECT upper(name), count(*) FROM users WHERE length(email) > 0;');
+```
+
+##### Returns
+A table with:
+- `function_name`: the name of the function
+- `schema`: schema name (default `"main"` if unspecified)  
+- `context`: where the function appears in the query
+
+##### Example
+```sql
+SELECT * FROM parse_functions($$
+    SELECT upper(name), count(*) 
+    FROM users 
+    WHERE length(email) > 0 
+    GROUP BY substr(department, 1, 3)
+    HAVING sum(salary) > 100000
+    ORDER BY lower(name)
+$$);
+```
+
+| function_name | schema | context    |
+|---------------|--------|------------|
+| upper         | main   | select     |
+| count_star    | main   | select     |
+| length        | main   | where      |
+| substr        | main   | group_by   |
+| sum           | main   | having     |
+| lower         | main   | order_by   |
+
+---
+
+#### `parse_function_names(sql_query)` – Scalar Function
+
+Returns a list of function names (strings) referenced in the SQL query.
+
+##### Usage
+```sql
+SELECT parse_function_names('SELECT upper(name), lower(email) FROM users;');
+----
+['upper', 'lower']
+```
+
+##### Returns
+A list of strings, each being a function name.
+
+##### Example
+```sql
+SELECT parse_function_names('SELECT rank() OVER (ORDER BY salary) FROM users;');
+----
+['rank']
+```
+
+---
+
+#### `parse_functions(sql_query)` – Scalar Function (Structured)
+
+Similar to the table function, but returns a **list of structs** instead of a result table. Each struct contains:
+
+- `function_name` (VARCHAR)
+- `schema` (VARCHAR)  
+- `context` (VARCHAR)
+
+##### Usage
+```sql
+SELECT parse_functions('SELECT upper(name), count(*) FROM users;');
+----
+[{'function_name': upper, 'schema': main, 'context': select}, {'function_name': count_star, 'schema': main, 'context': select}]
+```
+
+##### Returns
+A list of STRUCTs with function name, schema, and context.
+
+##### Example with filtering
+```sql
+SELECT list_filter(parse_functions('SELECT upper(name) FROM users WHERE lower(email) LIKE "%@example.com"'), f -> f.context = 'where') AS where_functions;
+----
+[{'function_name': lower, 'schema': main, 'context': where}]
+```
+
+---
+
+### Table Parsing Functions
+
+#### `parse_tables(sql_query)` – Table Function
 
 Parses a SQL `SELECT` query and returns all referenced tables along with their context of use (e.g. `from`, `join_left`, `cte`, etc.).
 
