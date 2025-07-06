@@ -1,0 +1,97 @@
+# name: test/sql/parser_tools/scalar_functions/parse_function_names.test
+# description: test parse_function_names scalar function
+# group: [parse_function_names]
+
+# Before we load the extension, this will fail
+statement error
+SELECT parse_function_names('SELECT upper(name) FROM my_table;');
+----
+Catalog Error: Scalar Function with name parse_function_names does not exist!
+
+# Require statement will ensure this test is run with this extension loaded
+require parser_tools
+
+# simple function in SELECT
+query I
+SELECT parse_function_names('SELECT upper(name) FROM my_table;');
+----
+[upper]
+
+# multiple functions in SELECT
+query I
+SELECT parse_function_names('SELECT upper(name), lower(email), length(address) FROM users;');
+----
+[upper, lower, length]
+
+# function in WHERE clause
+query I
+SELECT parse_function_names('SELECT * FROM users WHERE length(name) > 5;');
+----
+[length]
+
+# nested functions
+query I
+SELECT parse_function_names('SELECT upper(left(name, 3)) FROM users;');
+----
+[upper, left]
+
+# complex query with multiple contexts
+query I
+SELECT parse_function_names($$
+    SELECT upper(name), count(*) 
+    FROM users 
+    WHERE length(email) > 0 
+    GROUP BY substr(department, 1, 3)
+    HAVING sum(salary) > 100000
+    ORDER BY lower(name)
+$$);
+----
+[upper, count_star, length, substr, sum, lower]
+
+# window functions
+query I
+SELECT parse_function_names('SELECT name, row_number() OVER (ORDER BY salary) FROM users;');
+----
+[row_number]
+
+# aggregate functions
+query I
+SELECT parse_function_names('SELECT count(*), sum(salary), avg(age) FROM users;');
+----
+[count_star, sum, avg]
+
+# CTE with functions
+query I
+SELECT parse_function_names('WITH ranked AS (SELECT name, rank() OVER (ORDER BY salary) as r FROM users) SELECT upper(name) FROM ranked;');
+----
+[rank, upper]
+
+# no functions
+query I
+SELECT parse_function_names('SELECT name, age FROM users;');
+----
+[]
+
+# malformed SQL should not error
+query I
+SELECT parse_function_names('SELECT upper( FROM users');
+----
+[]
+
+# INSERT statement (unsupported)
+query I
+SELECT parse_function_names('INSERT INTO users VALUES (upper("test"));');
+----
+[]
+
+# UPDATE statement (unsupported)
+query I  
+SELECT parse_function_names('UPDATE users SET name = upper(name);');
+----
+[]
+
+# CREATE VIEW statement (unsupported)
+query I
+SELECT parse_function_names('CREATE VIEW v AS SELECT upper(name) FROM users;');
+----
+[]

@@ -1,0 +1,114 @@
+# name: test/sql/parser_tools/table_functions/parse_functions.test
+# description: test parse_functions table function
+# group: [parse_functions]
+
+# Before we load the extension, this will fail
+statement error
+SELECT * FROM parse_functions('SELECT upper(name) FROM my_table;');
+----
+Catalog Error: Table Function with name parse_functions does not exist!
+
+# Require statement will ensure this test is run with this extension loaded
+require parser_tools
+
+# simple function in SELECT
+query III
+SELECT * FROM parse_functions('SELECT upper(name) FROM my_table;');
+----
+upper	main	select
+
+# multiple functions in SELECT
+query III
+SELECT * FROM parse_functions('SELECT upper(name), lower(email), length(address) FROM users;');
+----
+upper	main	select
+lower	main	select
+length	main	select
+
+# function in WHERE clause
+query III
+SELECT * FROM parse_functions('SELECT * FROM users WHERE length(name) > 5;');
+----
+length	main	where
+
+# function in HAVING clause
+query III
+SELECT * FROM parse_functions('SELECT count(*) FROM users GROUP BY department HAVING max(salary) > 50000;');
+----
+count_star	main	select
+max	main	having
+
+# function in ORDER BY clause
+query III
+SELECT * FROM parse_functions('SELECT * FROM users ORDER BY upper(name);');
+----
+upper	main	order_by
+
+# function in GROUP BY clause
+query III
+SELECT * FROM parse_functions('SELECT count(*) FROM users GROUP BY substr(name, 1, 1);');
+----
+count_star	main	select
+substr	main	group_by
+
+# nested functions
+query III
+SELECT * FROM parse_functions('SELECT upper(left(name, 3)) FROM users;');
+----
+upper	main	select
+left	main	nested
+
+# window functions
+query III
+SELECT * FROM parse_functions('SELECT name, row_number() OVER (ORDER BY salary) FROM users;');
+----
+row_number	main	select
+
+# aggregate functions
+query III
+SELECT * FROM parse_functions('SELECT count(*), sum(salary), avg(age) FROM users;');
+----
+count_star	main	select
+sum	main	select
+avg	main	select
+
+# functions with schema qualification
+query III
+SELECT * FROM parse_functions('SELECT my_schema.custom_func(name) FROM users;');
+----
+custom_func	my_schema	select
+
+# complex query with multiple contexts
+query III
+SELECT * FROM parse_functions($$
+    SELECT upper(name), count(*) 
+    FROM users 
+    WHERE length(email) > 0 
+    GROUP BY substr(department, 1, 3)
+    HAVING sum(salary) > 100000
+    ORDER BY lower(name)
+$$);
+----
+upper	main	select
+count_star	main	select
+length	main	where
+substr	main	group_by
+sum	main	having
+lower	main	order_by
+
+# CTE with functions
+query III
+SELECT * FROM parse_functions('WITH ranked AS (SELECT name, rank() OVER (ORDER BY salary) as r FROM users) SELECT upper(name) FROM ranked;');
+----
+rank	main	select
+upper	main	select
+
+# no functions
+query III
+SELECT * FROM parse_functions('SELECT name, age FROM users;');
+----
+
+# malformed SQL should not error
+query III
+SELECT * FROM parse_functions('SELECT upper( FROM users');
+----
