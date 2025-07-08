@@ -3,6 +3,7 @@
 #include "parser_tools_extension.hpp"
 #include "parse_tables.hpp"
 #include "parse_where.hpp"
+#include "parse_functions.hpp"
 #include "duckdb.hpp"
 #include "duckdb/common/exception.hpp"
 #include "duckdb/common/string_util.hpp"
@@ -27,6 +28,8 @@ static void LoadInternal(DatabaseInstance &instance) {
 	RegisterParseWhereFunction(instance);
 	RegisterParseWhereScalarFunction(instance);
 	RegisterParseWhereDetailedFunction(instance);
+	RegisterParseFunctionsFunction(instance);
+	RegisterParseFunctionScalarFunction(instance);
 }
 
 void ParserToolsExtension::Load(DuckDB &db) {

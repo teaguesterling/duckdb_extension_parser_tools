@@ -1,0 +1,111 @@
+# name: test/sql/parser_tools/scalar_functions/parse_functions.test
+# description: test parse_functions scalar function (struct variant)
+# group: [parse_functions]
+
+# Before we load the extension, this will fail
+statement error
+SELECT parse_functions('SELECT upper(name) FROM my_table;');
+----
+Catalog Error: Scalar Function with name parse_functions does not exist!
+
+# Require statement will ensure this test is run with this extension loaded
+require parser_tools
+
+# simple function in SELECT
+query I
+SELECT parse_functions('SELECT upper(name) FROM my_table;');
+----
+[{'function_name': upper, 'schema': main, 'context': select}]
+
+# multiple functions in SELECT
+query I
+SELECT parse_functions('SELECT upper(name), lower(email), length(address) FROM users;');
+----
+[{'function_name': upper, 'schema': main, 'context': select}, {'function_name': lower, 'schema': main, 'context': select}, {'function_name': length, 'schema': main, 'context': select}]
+
+# function in WHERE clause
+query I
+SELECT parse_functions('SELECT * FROM users WHERE length(name) > 5;');
+----
+[{'function_name': length, 'schema': main, 'context': where}]
+
+# function in HAVING clause
+query I
+SELECT parse_functions('SELECT count_star(*) FROM users GROUP BY department HAVING max(salary) > 50000;');
+----
+[{'function_name': count_star, 'schema': main, 'context': select}, {'function_name': max, 'schema': main, 'context': having}]
+
+# function in ORDER BY clause
+query I
+SELECT parse_functions('SELECT * FROM users ORDER BY upper(name);');
+----
+[{'function_name': upper, 'schema': main, 'context': order_by}]
+
+# function in GROUP BY clause
+query I
+SELECT parse_functions('SELECT count_star(*) FROM users GROUP BY substr(name, 1, 1);');
+----
+[{'function_name': count_star, 'schema': main, 'context': select}, {'function_name': substr, 'schema': main, 'context': group_by}]
+
+# nested functions
+query I
+SELECT parse_functions('SELECT upper(left(name, 3)) FROM users;');
+----
+[{'function_name': upper, 'schema': main, 'context': select}, {'function_name': left, 'schema': main, 'context': nested}]
+
+# functions with schema qualification
+query I
+SELECT parse_functions('SELECT my_schema.custom_func(name) FROM users;');
+----
+[{'function_name': custom_func, 'schema': my_schema, 'context': select}]
+
+# demonstrate list filter functionality on context
+query I
+SELECT list_filter(parse_functions('SELECT upper(name), count_star(*) FROM users WHERE length(email) > 0'), f -> f.context = 'select') AS select_functions;
+----
+[{'function_name': upper, 'schema': main, 'context': select}, {'function_name': count_star, 'schema': main, 'context': select}]
+
+# demonstrate list filter functionality on function name
+query I
+SELECT list_filter(parse_functions('SELECT upper(name), lower(name), count_star(*) FROM users'), f -> f.function_name LIKE '%er') AS er_functions;
+----
+[{'function_name': upper, 'schema': main, 'context': select}, {'function_name': lower, 'schema': main, 'context': select}]
+
+# CTE with functions
+query I
+SELECT parse_functions('WITH ranked AS (SELECT name, rank() OVER (ORDER BY salary) as r FROM users) SELECT upper(name) FROM ranked;');
+----
+[{'function_name': rank, 'schema': main, 'context': select}, {'function_name': upper, 'schema': main, 'context': select}]
+
+# no functions
+query I
+SELECT parse_functions('SELECT name, age FROM users;');
+----
+[]
+
+# malformed SQL should not error
+query I
+SELECT parse_functions('SELECT upper( FROM users');
+----
+[]
+
+# Unsupported statements
+# ---------------------
+
+# INSERT statement (unsupported)
+query I
+SELECT parse_functions('INSERT INTO users VALUES (upper("test"));');
+----
+[]
+
+# UPDATE statement (unsupported)
+query I  
+SELECT parse_functions('UPDATE users SET name = upper(name);');
+----
+[]
+
+# CREATE VIEW statement (unsupported)
+query I
+SELECT parse_functions('CREATE VIEW v AS SELECT upper(name) FROM users;');
+----
+[]
