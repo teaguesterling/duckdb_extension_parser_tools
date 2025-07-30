@@ -14,6 +14,7 @@ set(EXTENSION_SOURCES
   src/parse_tables.cpp
   src/parse_where.cpp
   src/parse_functions.cpp
+  src/parse_columns.cpp
 )
 
 build_static_extension(${TARGET_NAME} ${EXTENSION_SOURCES})
