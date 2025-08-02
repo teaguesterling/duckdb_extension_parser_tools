@@ -1,0 +1,145 @@
+# name: test/sql/parser_tools/table_functions/parse_columns_edge_cases.test
+# description: test parse_columns table function edge cases and special scenarios
+# group: [parse_columns]
+
+require parser_tools
+
+# Test NULL values in output (schema/table missing for unqualified columns)
+query IIIIIII
+SELECT expression_identifiers, table_schema IS NULL as schema_null, table_name IS NULL as table_null, column_name, selected_name IS NULL as selected_null 
+FROM parse_columns('SELECT name FROM users;');
+----
+[["name"]]	1	1	name	1
+
+# Test that only input columns are returned (selected_name IS NULL)
+query I
+SELECT COUNT(*) FROM parse_columns('SELECT name AS user_name, age FROM users;') WHERE selected_name IS NULL;
+----
+2
+
+# Test that output columns are correctly identified
+query I
+SELECT COUNT(*) FROM parse_columns('SELECT name AS user_name, age FROM users;') WHERE selected_name IS NOT NULL;
+----
+1
+
+# Test extremely long qualification chain
+query IIIIIII
+SELECT * FROM parse_columns('SELECT main.schema1.table1.col1.field1.subfield1 FROM main.schema1.table1;');
+----
+[["main","schema1","table1","col1","field1","subfield1"]]	main	schema1	table1	select	main.schema1.table1.col1.field1.subfield1	NULL
+
+# Test column with same name as table
+query IIIIIII
+SELECT * FROM parse_columns('SELECT users.users FROM users;');
+----
+[["users","users"]]	main	users	users	select	users.users	NULL
+
+# Test multiple references to same column in different contexts
+query I
+SELECT COUNT(*) FROM parse_columns('SELECT name FROM users WHERE name IS NOT NULL ORDER BY name;');
+----
+3
+
+# Test expression with no column references (literals only)
+query I
+SELECT COUNT(*) FROM parse_columns('SELECT 1 + 2 * 3 AS result;');
+----
+0
+
+# Test complex nested function calls
+query I
+SELECT COUNT(*) FROM parse_columns('SELECT UPPER(LOWER(SUBSTR(name, 1, 3))) FROM users;') WHERE context = 'function_arg';
+----
+1
+
+# Test window function with multiple column references
+query I
+SELECT COUNT(*) FROM parse_columns('SELECT ROW_NUMBER() OVER (PARTITION BY dept ORDER BY salary DESC, name ASC) FROM employees;');
+----
+3
+
+# Test CASE expression with multiple column references
+query I
+SELECT COUNT(*) FROM parse_columns('SELECT CASE WHEN age > 65 THEN "senior" WHEN age > 18 THEN "adult" ELSE "minor" END FROM users;');
+----
+2
+
+# Test columns in aggregate function with GROUP BY
+query I
+SELECT COUNT(*) FROM parse_columns('SELECT dept, COUNT(employee_id), AVG(salary) FROM employees GROUP BY dept;');
+----
+4
+
+# Test deeply nested subquery column references
+query I
+SELECT COUNT(*) FROM parse_columns('SELECT name FROM (SELECT name FROM (SELECT name FROM users) t1) t2;');
+----
+3
+
+# Test self-join with table aliases
+query I
+SELECT COUNT(*) FROM parse_columns('SELECT a.name, b.name FROM users a JOIN users b ON a.manager_id = b.id;');
+----
+4
+
+# Test column in HAVING clause
+query I
+SELECT COUNT(*) FROM parse_columns('SELECT dept FROM employees GROUP BY dept HAVING COUNT(*) > 5 AND AVG(salary) > 50000;');
+----
+3
+
+# Test UNION with column references  
+query I
+SELECT COUNT(*) FROM parse_columns('SELECT name FROM users UNION SELECT name FROM employees;');
+----
+2
+
+# Test INSERT with column references (should return empty as INSERT not supported)
+query I
+SELECT COUNT(*) FROM parse_columns('INSERT INTO users (name, age) VALUES ("John", 25);');
+----
+0
+
+# Test UPDATE statement (should return empty as UPDATE not supported)
+query I
+SELECT COUNT(*) FROM parse_columns('UPDATE users SET age = 26 WHERE name = "John";');
+----
+0
+
+# Test arithmetic with multiple column references and complex expressions
+query I
+SELECT COUNT(*) FROM parse_columns('SELECT (salary * 1.1) + (bonus * 0.5) - tax AS net_pay FROM employees;');
+----
+3
+
+# Test column references in JOIN conditions
+query I
+SELECT COUNT(*) FROM parse_columns('SELECT u.name FROM users u JOIN orders o ON u.id = o.user_id AND u.status = "active";');
+----
+4
+
+# Test column with special characters in name (quoted)
+query IIIIIII
+SELECT * FROM parse_columns('SELECT "user name", "order-total" FROM "my table";');
+----
+[["user name"]]	NULL	NULL	user name	select	"user name"	NULL
+[["order-total"]]	NULL	NULL	order-total	select	"order-total"	NULL
+
+# Test very complex alias chain
+query I
+SELECT COUNT(*) FROM parse_columns('SELECT 1 AS a, 2 AS b, a+b AS c, c*2 AS d, d+a AS e, e+b+c AS f FROM table1;');
+----
+10
+
+# Test nested function calls with column arguments
+query I
+SELECT COUNT(*) FROM parse_columns('SELECT CONCAT(UPPER(first_name), " ", LOWER(last_name)) FROM users;');
+----
+2
+
+# Test empty query
+query I
+SELECT COUNT(*) FROM parse_columns('');
+----
+0

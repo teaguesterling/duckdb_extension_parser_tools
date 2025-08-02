@@ -1,0 +1,41 @@
+# name: test/sql/parser_tools/scalar_functions/parse_columns.test
+# description: test parse_columns scalar function integration
+# group: [parse_columns]
+
+# Before we load the extension, this will fail
+statement error
+SELECT parse_column_names('SELECT name FROM users;');
+----
+Catalog Error: Scalar Function with name parse_column_names does not exist!
+
+# Require statement will ensure this test is run with this extension loaded
+require parser_tools
+
+# Note: Currently only table function is implemented, but this test file
+# is a placeholder for future scalar function implementations
+
+# Test that table function works
+query I
+SELECT COUNT(*) FROM parse_columns('SELECT name, age FROM users;');
+----
+2
+
+# Test that table function returns expected structure
+query I
+SELECT COUNT(*) FROM (SELECT * FROM parse_columns('SELECT u.name AS user_name FROM users u;') WHERE selected_name = 'user_name');
+----
+1
+
+# Test complex query returns multiple rows
+query I
+SELECT COUNT(*) FROM parse_columns('SELECT a, b, a+b AS c FROM table1;');
+----
+4
+
+# Test that input and output columns are distinguished
+query II
+SELECT 
+    COUNT(*) as input_columns,
+    (SELECT COUNT(*) FROM parse_columns('SELECT name AS user_name, age FROM users;') WHERE selected_name IS NOT NULL) as output_columns;
+----
+2	1

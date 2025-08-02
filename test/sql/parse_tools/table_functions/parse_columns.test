@@ -1,0 +1,175 @@
+# name: test/sql/parser_tools/table_functions/parse_columns.test
+# description: test parse_columns table function
+# group: [parse_columns]
+
+# Before we load the extension, this will fail
+statement error
+SELECT * FROM parse_columns('SELECT name FROM users;');
+----
+Catalog Error: Table Function with name parse_columns does not exist!
+
+# Require statement will ensure this test is run with this extension loaded
+require parser_tools
+
+# basic unqualified columns
+query IIIIIII
+SELECT * FROM parse_columns('SELECT name, age FROM users;');
+----
+[["name"]]	NULL	NULL	name	select	name	NULL
+[["age"]]	NULL	NULL	age	select	age	NULL
+
+# schema-qualified columns
+query IIIIIII
+SELECT * FROM parse_columns('SELECT main.users.name FROM main.users;');
+----
+[["main","users","name"]]	main	users	name	select	main.users.name	NULL
+
+# table alias with qualified columns
+query IIIIIII
+SELECT * FROM parse_columns('SELECT u.name, u.age FROM users u;');
+----
+[["u","name"]]	main	u	name	select	u.name	NULL
+[["u","age"]]	main	u	age	select	u.age	NULL
+
+# alias chain scenario - key test case
+query IIIIIII
+SELECT * FROM parse_columns('SELECT 1 AS a, users.age AS b, a+b AS c FROM users;');
+----
+[["users","age"]]	main	users	age	select	users.age	NULL
+[["users","age"]]	NULL	NULL	NULL	select	users.age	b
+[["a"]]	NULL	NULL	a	function_arg	a	NULL
+[["b"]]	NULL	NULL	b	function_arg	b	NULL
+[["a"],["b"]]	NULL	NULL	NULL	select	(a + b)	c
+
+# WHERE clause columns
+query IIIIIII
+SELECT * FROM parse_columns('SELECT name FROM users WHERE age > 18;');
+----
+[["name"]]	NULL	NULL	name	select	name	NULL
+[["age"]]	NULL	NULL	age	function_arg	age	NULL
+
+# complex multi-table JOIN
+query IIIIIII
+SELECT * FROM parse_columns('SELECT u.name, o.total FROM users u JOIN orders o ON u.id = o.user_id;');
+----
+[["u","name"]]	main	u	name	select	u.name	NULL
+[["o","total"]]	main	o	total	select	o.total	NULL
+[["u","id"]]	main	u	id	function_arg	u.id	NULL
+[["o","user_id"]]	main	o	user_id	function_arg	o.user_id	NULL
+
+# nested struct field access
+query IIIIIII
+SELECT * FROM parse_columns('SELECT users.profile.address.city FROM users;');
+----
+[["users","profile","address","city"]]	users	profile	address	select	users.profile.address.city	NULL
+
+# GROUP BY and HAVING clauses
+query IIIIIII
+SELECT * FROM parse_columns('SELECT department, COUNT(*) FROM users GROUP BY department HAVING age > 25;');
+----
+[["department"]]	NULL	NULL	department	select	department	NULL
+[["department"]]	NULL	NULL	department	group_by	department	NULL
+[["age"]]	NULL	NULL	age	function_arg	age	NULL
+
+# ORDER BY clause
+query IIIIIII
+SELECT * FROM parse_columns('SELECT name FROM users ORDER BY age DESC, name ASC;');
+----
+[["name"]]	NULL	NULL	name	select	name	NULL
+[["age"]]	NULL	NULL	age	order_by	age	NULL
+[["name"]]	NULL	NULL	name	order_by	name	NULL
+
+# function arguments with columns
+query IIIIIII
+SELECT * FROM parse_columns('SELECT UPPER(name), CONCAT(first_name, last_name) FROM users;');
+----
+[["name"]]	NULL	NULL	name	function_arg	name	NULL
+[["first_name"]]	NULL	NULL	first_name	function_arg	first_name	NULL
+[["last_name"]]	NULL	NULL	last_name	function_arg	last_name	NULL
+[["first_name"],["last_name"]]	NULL	NULL	NULL	select	concat(first_name, last_name)	NULL
+
+# window functions with PARTITION BY and ORDER BY
+query IIIIIII
+SELECT * FROM parse_columns('SELECT name, ROW_NUMBER() OVER (PARTITION BY department ORDER BY salary) FROM users;');
+----
+[["name"]]	NULL	NULL	name	select	name	NULL
+[["department"]]	NULL	NULL	department	function_arg	department	NULL
+[["salary"]]	NULL	NULL	salary	function_arg	salary	NULL
+[["department"],["salary"]]	NULL	NULL	NULL	select	row_number() OVER (PARTITION BY department ORDER BY salary)	NULL
+
+# CASE expression with columns
+query IIIIIII
+SELECT * FROM parse_columns('SELECT CASE WHEN age < 18 THEN "minor" ELSE "adult" END FROM users;');
+----
+[["age"]]	NULL	NULL	age	function_arg	age	NULL
+[["age"]]	NULL	NULL	NULL	select	CASE  WHEN (age < 18) THEN 'minor' ELSE 'adult' END	NULL
+
+# subquery with EXISTS
+query IIIIIII
+SELECT * FROM parse_columns('SELECT name FROM users WHERE EXISTS (SELECT 1 FROM orders WHERE orders.user_id = users.id);');
+----
+[["name"]]	NULL	NULL	name	select	name	NULL
+
+# CTE with column references
+query IIIIIII
+SELECT * FROM parse_columns('WITH user_stats AS (SELECT name, COUNT(*) as order_count FROM users) SELECT name FROM user_stats;');
+----
+[["name"]]	NULL	NULL	name	select	name	NULL
+
+# arithmetic expressions
+query IIIIIII
+SELECT * FROM parse_columns('SELECT age * 2 + 10 AS calculated_age FROM users;');
+----
+[["age"]]	NULL	NULL	age	function_arg	age	NULL
+[["age"]]	NULL	NULL	NULL	select	((age * 2) + 10)	calculated_age
+
+# mixed qualified and unqualified in same query
+query IIIIIII
+SELECT * FROM parse_columns('SELECT name, users.age, main.users.email FROM users;');
+----
+[["name"]]	NULL	NULL	name	select	name	NULL
+[["users","age"]]	main	users	age	select	users.age	NULL
+[["main","users","email"]]	main	users	email	select	main.users.email	NULL
+
+# aggregate functions with columns
+query IIIIIII
+SELECT * FROM parse_columns('SELECT COUNT(DISTINCT user_id), SUM(total) FROM orders;');
+----
+[["user_id"]]	NULL	NULL	user_id	function_arg	user_id	NULL
+[["user_id"]]	NULL	NULL	NULL	select	count(DISTINCT user_id)	NULL
+[["total"]]	NULL	NULL	total	function_arg	total	NULL
+[["total"]]	NULL	NULL	NULL	select	sum(total)	NULL
+
+# deeply nested struct with schema
+query IIIIIII
+SELECT * FROM parse_columns('SELECT main.users.profile.address.city FROM main.users;');
+----
+[["main","users","profile","address","city"]]	main	users	profile	select	main.users.profile.address.city	NULL
+
+# multiple alias references
+query IIIIIII
+SELECT * FROM parse_columns('SELECT 1 AS a, 2 AS b, a+b AS c, c*2 AS d FROM users;');
+----
+[["a"]]	NULL	NULL	a	function_arg	a	NULL
+[["b"]]	NULL	NULL	b	function_arg	b	NULL
+[["a"],["b"]]	NULL	NULL	NULL	select	(a + b)	c
+[["c"]]	NULL	NULL	c	function_arg	c	NULL
+[["c"]]	NULL	NULL	NULL	select	(c * 2)	d
+
+# complex expression with multiple identifiers
+query IIIIIII
+SELECT * FROM parse_columns('SELECT u.name || " (" || u.email || ")" AS full_info FROM users u;');
+----
+[["u","name"]]	main	u	name	function_arg	u.name	NULL
+[["u","email"]]	main	u	email	function_arg	u.email	NULL
+[["u","name"],["u","email"]]	NULL	NULL	NULL	select	concat(concat(concat(u."name", ' ('), u.email), ')')	full_info
+
+# no columns (literals only)
+query IIIIIII
+SELECT * FROM parse_columns('SELECT 1, "hello", TRUE;');
+----
+
+# malformed SQL should not error
+query IIIIIII
+SELECT * FROM parse_columns('SELECT name FROM WHERE');
+----
