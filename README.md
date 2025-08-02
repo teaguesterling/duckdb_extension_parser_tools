@@ -10,15 +10,19 @@ An experimental DuckDB extension that exposes functionality from DuckDB's native
 
 - **Extract table references** from a SQL query with context information (e.g. `FROM`, `JOIN`, etc.)
 - **Extract function calls** from a SQL query with context information (e.g. `SELECT`, `WHERE`, `HAVING`, etc.)
+- **Extract column references** from a SQL query with comprehensive dependency tracking
 - **Parse WHERE clauses** to extract conditions and operators
 - Support for **window functions**, **nested functions**, and **CTEs**
+- **Alias chain tracking** for complex column dependencies
+- **Nested struct field access** parsing (e.g., `table.column.field.subfield`)
+- **Input vs output column distinction** for complete dependency analysis
 - Includes **schema**, **name**, and **context** information for all extractions
 - Built on DuckDB's native SQL parser
 - Simple SQL interface — no external tooling required
 
 
 ## Known Limitations
-- Only `SELECT` statements are supported for table and function parsing
+- Only `SELECT` statements are supported for table, function, and column parsing
 - WHERE clause parsing supports additional statement types
 - Full parse tree is not exposed (only specific structural elements)
 
@@ -92,9 +96,17 @@ Context helps identify where elements are used in the query.
 - `group_by`: function in a `GROUP BY` clause
 - `nested`: function call nested within another function
 
+### Column Context
+- `select`: column in a `SELECT` clause
+- `where`: column in a `WHERE` clause
+- `having`: column in a `HAVING` clause
+- `order_by`: column in an `ORDER BY` clause
+- `group_by`: column in a `GROUP BY` clause
+- `function_arg`: column used as a function argument
+
 ## Functions
 
-This extension provides parsing functions for tables, functions, and WHERE clauses. Each category includes both table functions (for detailed results) and scalar functions (for programmatic use).
+This extension provides parsing functions for tables, functions, columns, and WHERE clauses. Each category includes both table functions (for detailed results) and scalar functions (for programmatic use).
 
 In general, errors (e.g. Parse Exception) will not be exposed to the user, but instead will result in an empty result. This simplifies batch processing. When validity is needed, [is_parsable](#is_parsablesql_query--scalar-function) can be used.
 
@@ -187,6 +199,70 @@ SELECT list_filter(parse_functions('SELECT upper(name) FROM users WHERE lower(em
 ----
 [{'function_name': lower, 'schema': main, 'context': where}]
 ```
+
+---
+
+### Column Parsing Functions
+
+These functions extract column references from SQL queries, providing comprehensive dependency tracking including alias chains, nested struct field access, and input/output column distinction.
+
+#### `parse_columns(sql_query)` – Table Function
+
+Parses a SQL `SELECT` query and returns all column references along with their context, schema qualification, and dependency information.
+
+##### Usage
+```sql
+SELECT * FROM parse_columns('SELECT u.name, o.total FROM users u JOIN orders o ON u.id = o.user_id;');
+```
+
+##### Returns
+A table with:
+- `expression_identifiers`: JSON array of identifier paths (e.g., `[["u","name"]]` or `[["schema","table","column","field"]]`)
+- `table_schema`: schema name for table columns (NULL for aliases/expressions)
+- `table_name`: table name for table columns (NULL for aliases/expressions)
+- `column_name`: column name for simple references (NULL for complex expressions)
+- `context`: where the column appears in the query (select, where, function_arg, etc.)
+- `expression`: full expression text as it appears in the SQL
+- `selected_name`: output column name for SELECT items (NULL for input columns)
+
+##### Basic Example
+```sql
+SELECT * FROM parse_columns('SELECT name, age FROM users;');
+```
+
+| expression_identifiers | table_schema | table_name | column_name | context | expression | selected_name |
+|------------------------|--------------|------------|-------------|---------|------------|---------------|
+| [["name"]]             | NULL         | NULL       | name        | select  | name       | NULL          |
+| [["age"]]              | NULL         | NULL       | age         | select  | age        | NULL          |
+
+##### Alias Chain Example
+```sql
+SELECT * FROM parse_columns('SELECT 1 AS a, users.age AS b, a+b AS c FROM users;');
+```
+
+| expression_identifiers | table_schema | table_name | column_name | context      | expression | selected_name |
+|------------------------|--------------|------------|-------------|--------------|------------|---------------|
+| [["users","age"]]      | main         | users      | age         | select       | users.age  | NULL          |
+| [["users","age"]]      | NULL         | NULL       | NULL        | select       | users.age  | b             |
+| [["a"]]                | NULL         | NULL       | a           | function_arg | a          | NULL          |
+| [["b"]]                | NULL         | NULL       | b           | function_arg | b          | NULL          |
+| [["a"],["b"]]          | NULL         | NULL       | NULL        | select       | (a + b)    | c             |
+
+##### Nested Struct Example
+```sql
+SELECT * FROM parse_columns('SELECT users.profile.address.city FROM users;');
+```
+
+| expression_identifiers                        | table_schema | table_name | column_name | context | expression                   | selected_name |
+|------------------------------------------------|--------------|------------|-------------|---------|------------------------------|---------------|
+| [["users","profile","address","city"]]        | users        | profile    | address     | select  | users.profile.address.city   | NULL          |
+
+##### Complex Multi-table Example
+```sql
+SELECT * FROM parse_columns('SELECT u.name, o.total, u.age + o.total AS score FROM users u JOIN orders o ON u.id = o.user_id WHERE u.status = "active";');
+```
+
+Shows columns from multiple tables with different contexts (select, function_arg, join conditions).
 
 ---
 
