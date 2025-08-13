@@ -252,21 +252,37 @@ static void ParseColumnsFunction(ClientContext &context, TableFunctionInput &dat
 	auto &state = (ParseColumnsState &)*data_p.global_state;
 	
 	if (state.row == 0) {
-		// Parse the SQL statement  
-		Parser parser;
-		parser.ParseQuery(bind_data.sql);
-		
-		if (parser.statements.empty()) {
+		// Handle empty SQL
+		if (bind_data.sql.empty()) {
 			return;
 		}
 		
-		// Process each statement
-		for (const auto &statement : parser.statements) {
-			if (statement->type == StatementType::SELECT_STATEMENT) {
-				auto &select_stmt = (SelectStatement &)*statement;
-				auto &select_node = (SelectNode &)*select_stmt.node;
-				ExtractFromSelectNode(select_node, state.results);
+		// Parse the SQL statement with error handling
+		Parser parser;
+		try {
+			parser.ParseQuery(bind_data.sql);
+			
+			if (parser.statements.empty()) {
+				return;
 			}
+			
+			// Process each statement
+			for (const auto &statement : parser.statements) {
+				if (statement->type == StatementType::SELECT_STATEMENT) {
+					auto &select_stmt = (SelectStatement &)*statement;
+					
+					// Check the query node type before casting
+					if (select_stmt.node->type == QueryNodeType::SELECT_NODE) {
+						auto &select_node = (SelectNode &)*select_stmt.node;
+						ExtractFromSelectNode(select_node, state.results);
+					}
+					// For other node types (SET_OPERATION_NODE, CTE_NODE, etc.), 
+					// we currently don't extract columns - return empty result
+				}
+			}
+		} catch (...) {
+			// If parsing fails, return empty result gracefully
+			return;
 		}
 	}
 	

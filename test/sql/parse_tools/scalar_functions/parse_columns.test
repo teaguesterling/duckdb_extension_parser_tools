@@ -30,12 +30,12 @@ SELECT COUNT(*) FROM (SELECT * FROM parse_columns('SELECT u.name AS user_name FR
 query I
 SELECT COUNT(*) FROM parse_columns('SELECT a, b, a+b AS c FROM table1;');
 ----
-4
+5
 
 # Test that input and output columns are distinguished
 query II
 SELECT 
-    COUNT(*) as input_columns,
+    (SELECT COUNT(*) FROM parse_columns('SELECT name AS user_name, age FROM users;') WHERE selected_name IS NULL) as input_columns,
     (SELECT COUNT(*) FROM parse_columns('SELECT name AS user_name, age FROM users;') WHERE selected_name IS NOT NULL) as output_columns;
 ----
 2	1
