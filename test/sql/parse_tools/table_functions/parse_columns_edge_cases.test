@@ -24,13 +24,13 @@ SELECT COUNT(*) FROM parse_columns('SELECT name AS user_name, age FROM users;') 
 1
 
 # Test extremely long qualification chain
-query IIIIIII
+query TTTTTTT
 SELECT * FROM parse_columns('SELECT main.schema1.table1.col1.field1.subfield1 FROM main.schema1.table1;');
 ----
 [["main","schema1","table1","col1","field1","subfield1"]]	main	schema1	table1	select	main.schema1.table1.col1.field1.subfield1	NULL
 
 # Test column with same name as table
-query IIIIIII
+query TTTTTTT
 SELECT * FROM parse_columns('SELECT users.users FROM users;');
 ----
 [["users","users"]]	main	users	users	select	users.users	NULL
