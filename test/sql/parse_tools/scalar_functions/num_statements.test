@@ -1,0 +1,79 @@
+# name: test/sql/parser_tools/scalar_functions/num_statements.test
+# description: test num_statements scalar function
+# group: [num_statements]
+
+# Before we load the extension, this will fail
+statement error
+SELECT num_statements('SELECT 42; SELECT 43;');
+----
+Catalog Error: Scalar Function with name num_statements does not exist!
+
+# Require statement will ensure this test is run with this extension loaded
+require parser_tools
+
+# Single statement
+query I
+SELECT num_statements('SELECT 42;');
+----
+1
+
+# Two statements
+query I
+SELECT num_statements('SELECT 42; SELECT 43;');
+----
+2
+
+# Three statements
+query I
+SELECT num_statements('SELECT 1; SELECT 2; SELECT 3;');
+----
+3
+
+# Multiple statements with different types
+query I
+SELECT num_statements('SELECT 1; INSERT INTO test VALUES (2); UPDATE test SET x = 1; SELECT 3;');
+----
+4
+
+# Complex multi-statement query
+query I
+SELECT num_statements($$
+    WITH cte AS (SELECT 1 as a) SELECT * FROM cte;
+    SELECT upper('hello');
+    SELECT count(*) FROM users WHERE id > 10;
+    INSERT INTO log VALUES ('done');
+$$);
+----
+4
+
+# Single complex statement
+query I
+SELECT num_statements($$
+    WITH cte1 AS (SELECT * FROM table1),
+         cte2 AS (SELECT * FROM table2)
+    SELECT cte1.id, cte2.name
+    FROM cte1
+    JOIN cte2 ON cte1.id = cte2.id
+    WHERE cte1.active = true
+    ORDER BY cte1.created_at DESC;
+$$);
+----
+1
+
+# Empty input
+query I
+SELECT num_statements('');
+----
+0
+
+# Whitespace only
+query I
+SELECT num_statements('   ');
+----
+0
+
+# Invalid SQL should return 0
+query I
+SELECT num_statements('INVALID SQL SYNTAX HERE');
+----
+0

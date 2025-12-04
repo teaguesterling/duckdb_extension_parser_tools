@@ -7,7 +7,7 @@
 namespace duckdb {
 
 // Forward declarations
-class DatabaseInstance;
+class ExtensionLoader;
 
 struct WhereConditionResult {
     std::string condition;
@@ -23,8 +23,8 @@ struct DetailedWhereConditionResult {
     std::string context;        // The context where this condition appears (WHERE, HAVING, etc.)
 };
 
-void RegisterParseWhereFunction(DatabaseInstance &db);
-void RegisterParseWhereScalarFunction(DatabaseInstance &db);
-void RegisterParseWhereDetailedFunction(DatabaseInstance &db);
+void RegisterParseWhereFunction(ExtensionLoader &loader);
+void RegisterParseWhereScalarFunction(ExtensionLoader &loader);
+void RegisterParseWhereDetailedFunction(ExtensionLoader &loader);
 
 } // namespace duckdb 

@@ -1,14 +1,16 @@
 #include "parse_tables.hpp"
 #include "duckdb.hpp"
 #include "duckdb/parser/parser.hpp"
+#include "duckdb/parser/parser_options.hpp"
+#include <algorithm>
+#include <cctype>
 #include "duckdb/parser/statement/select_statement.hpp"
 #include "duckdb/parser/query_node/select_node.hpp"
+#include "duckdb/parser/query_node/cte_node.hpp"
 #include "duckdb/parser/tableref/basetableref.hpp"
 #include "duckdb/parser/tableref/joinref.hpp"
 #include "duckdb/parser/tableref/subqueryref.hpp"
-#include "duckdb/main/extension_util.hpp"
 #include "duckdb/function/scalar/nested_functions.hpp"
-
 
 namespace duckdb {
 
@@ -128,7 +130,7 @@ static void ExtractTablesFromQueryNode(
     if (node.type == QueryNodeType::SELECT_NODE) {
         auto &select_node = (SelectNode &)node;
 
-        // Emit CTE definitions
+        // Handle CTE definitions
         for (const auto &entry : select_node.cte_map.map) {
             results.push_back(TableRefResult{
                 "", entry.first, TableContext::CTE
@@ -142,6 +144,14 @@ static void ExtractTablesFromQueryNode(
         if (select_node.from_table) {
             ExtractTablesFromRef(*select_node.from_table, results, context, true, &select_node.cte_map);
         }
+    } 
+    // additional step necessary for duckdb v1.4.0: unwrap CTE node
+    else if (node.type == QueryNodeType::CTE_NODE) {
+        auto &cte_node = (CTENode &)node;
+
+        if (cte_node.child) {
+            ExtractTablesFromQueryNode(*cte_node.child, results, context, cte_map);
+        }
     }
 }
 
@@ -152,9 +162,8 @@ static void ExtractTablesFromSQL(const std::string &sql, std::vector<TableRefRes
         parser.ParseQuery(sql);
     } catch (const ParserException &ex) {
         // swallow parser exceptions to make this function more robust. is_parsable can be used if needed
-        return; 
+        return;
     }
-    
 
     for (auto &stmt : parser.statements) {
         if (stmt->type == StatementType::SELECT_STATEMENT) {
@@ -323,19 +332,19 @@ static void IsParsableFunction(DataChunk &args, ExpressionState &state, Vector &
 // Extension scaffolding
 // ---------------------------------------------------
 
-void RegisterParseTablesFunction(DatabaseInstance &db) {
+void RegisterParseTablesFunction(ExtensionLoader &loader) {
     TableFunction tf("parse_tables", {LogicalType::VARCHAR}, ParseTablesFunction, ParseTablesBind, ParseTablesInit);
-    ExtensionUtil::RegisterFunction(db, tf);
+    loader.RegisterFunction(tf);
 }
 
-void RegisterParseTableScalarFunction(DatabaseInstance &db) {
+void RegisterParseTableScalarFunction(ExtensionLoader &loader) {
     // parse_table_names is overloaded, allowing for an optional boolean argument
     // that indicates whether to include CTEs in the result
     // usage: parse_tables(sql_query [, include_cte])
     ScalarFunctionSet set("parse_table_names");
     set.AddFunction(ScalarFunction({LogicalType::VARCHAR}, LogicalType::LIST(LogicalType::VARCHAR), ParseTablesScalarFunction));
     set.AddFunction(ScalarFunction({LogicalType::VARCHAR, LogicalType::BOOLEAN}, LogicalType::LIST(LogicalType::VARCHAR), ParseTablesScalarFunction));
-    ExtensionUtil::RegisterFunction(db, set);
+    loader.RegisterFunction(set);
 
     // parse_tables_struct is a scalar function that returns a list of structs
     auto return_type = LogicalType::LIST(LogicalType::STRUCT({
@@ -344,11 +353,11 @@ void RegisterParseTableScalarFunction(DatabaseInstance &db) {
         {"context", LogicalType::VARCHAR}
     }));
     ScalarFunction sf("parse_tables", {LogicalType::VARCHAR}, return_type, ParseTablesScalarFunction_struct);
-    ExtensionUtil::RegisterFunction(db, sf);
+    loader.RegisterFunction(sf);
 
     // is_parsable is a scalar function that returns a boolean indicating whether the SQL query is parsable (no parse errors)
     ScalarFunction is_parsable("is_parsable", {LogicalType::VARCHAR}, LogicalType::BOOLEAN, IsParsableFunction);
-    ExtensionUtil::RegisterFunction(db, is_parsable);
+    loader.RegisterFunction(is_parsable);
 }
 
 } // namespace duckdb

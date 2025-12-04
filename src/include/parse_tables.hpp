@@ -33,7 +33,7 @@ static void ExtractTablesFromQueryNode(
     const duckdb::CommonTableExpressionMap *cte_map = nullptr
 );
 
-void RegisterParseTablesFunction(duckdb::DatabaseInstance &db);
-void RegisterParseTableScalarFunction(DatabaseInstance &db);
+void RegisterParseTablesFunction(duckdb::ExtensionLoader &loader);
+void RegisterParseTableScalarFunction(ExtensionLoader &loader);
 
 } // namespace duckdb

@@ -1,0 +1,70 @@
+# name: test/sql/parser_tools/table_functions/parse_statements.test
+# description: test parse_statements table function
+# group: [parse_statements]
+
+# Before we load the extension, this will fail
+statement error
+SELECT * FROM parse_statements('SELECT 42; SELECT 43;');
+----
+Catalog Error: Table Function with name parse_statements does not exist!
+
+# Require statement will ensure this test is run with this extension loaded
+require parser_tools
+
+# Single statement
+query I
+SELECT * FROM parse_statements('SELECT 42;');
+----
+SELECT 42
+
+# Multiple statements
+query I
+SELECT * FROM parse_statements('SELECT 42; SELECT 43;');
+----
+SELECT 42
+SELECT 43
+
+# Multiple statements with different types
+query I
+SELECT * FROM parse_statements('SELECT 1; INSERT INTO test VALUES (2); SELECT 3;');
+----
+SELECT 1
+INSERT INTO test (VALUES (2))
+SELECT 3
+
+# Complex multi-statement query
+query I
+SELECT * FROM parse_statements($$
+    WITH cte AS (SELECT 1 as a) SELECT * FROM cte;
+    SELECT upper('hello');
+    SELECT count(*) FROM users WHERE id > 10;
+$$);
+----
+WITH cte AS (SELECT 1 AS a)SELECT * FROM cte
+SELECT upper('hello')
+SELECT count_star() FROM users WHERE (id > 10)
+
+# Statements with CTEs and joins
+query I
+SELECT * FROM parse_statements($$
+    SELECT a.id FROM table_a a JOIN table_b b ON a.id = b.id;
+    WITH data AS (SELECT * FROM source) SELECT count(*) FROM data;
+$$);
+----
+SELECT a.id FROM table_a AS a INNER JOIN table_b AS b ON ((a.id = b.id))
+WITH "data" AS (SELECT * FROM "source")SELECT count_star() FROM "data"
+
+# Empty input
+query I
+SELECT * FROM parse_statements('');
+----
+
+# Whitespace only
+query I
+SELECT * FROM parse_statements('   ');
+----
+
+# Invalid SQL should return no results
+query I
+SELECT * FROM parse_statements('INVALID SQL SYNTAX HERE');
+----

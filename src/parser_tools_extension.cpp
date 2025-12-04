@@ -5,6 +5,7 @@
 #include "parse_where.hpp"
 #include "parse_functions.hpp"
 #include "parse_columns.hpp"
+#include "parse_statements.hpp"
 #include "duckdb.hpp"
 #include "duckdb/common/exception.hpp"
 #include "duckdb/common/string_util.hpp"
@@ -23,20 +24,22 @@ namespace duckdb {
 // ---------------------------------------------------
 // EXTENSION SCAFFOLDING
 
-static void LoadInternal(DatabaseInstance &instance) {
-    RegisterParseTablesFunction(instance);
-	RegisterParseTableScalarFunction(instance);
-	RegisterParseWhereFunction(instance);
-	RegisterParseWhereScalarFunction(instance);
-	RegisterParseWhereDetailedFunction(instance);
-	RegisterParseFunctionsFunction(instance);
-	RegisterParseFunctionScalarFunction(instance);
-	RegisterParseColumnsFunction(instance);
+static void LoadInternal(ExtensionLoader &loader) {
+  RegisterParseTablesFunction(loader);
+	RegisterParseTableScalarFunction(loader);
+	RegisterParseWhereFunction(loader);
+	RegisterParseWhereScalarFunction(loader);
+	RegisterParseWhereDetailedFunction(loader);
+	RegisterParseFunctionsFunction(loader);
+	RegisterParseFunctionScalarFunction(loader);
+  RegisterParseColumnsFunction(instance);
 	RegisterParseColumnScalarFunction(instance);
+	RegisterParseStatementsFunction(loader);
+	RegisterParseStatementsScalarFunction(loader);
 }
 
-void ParserToolsExtension::Load(DuckDB &db) {
-	LoadInternal(*db.instance);
+void ParserToolsExtension::Load(ExtensionLoader &loader) {
+	LoadInternal(loader);
 }
 
 std::string ParserToolsExtension::Name() {
@@ -55,16 +58,8 @@ std::string ParserToolsExtension::Version() const {
 
 extern "C" {
 
-DUCKDB_EXTENSION_API void parser_tools_init(duckdb::DatabaseInstance &db) {
-    duckdb::DuckDB db_wrapper(db);
-    db_wrapper.LoadExtension<duckdb::ParserToolsExtension>();
+DUCKDB_CPP_EXTENSION_ENTRY(parser_tools, loader) {
+    duckdb::LoadInternal(loader);
 }
 
-DUCKDB_EXTENSION_API const char *parser_tools_version() {
-	return duckdb::DuckDB::LibraryVersion();
 }
-}
-
-#ifndef DUCKDB_EXTENSION_MAIN
-#error DUCKDB_EXTENSION_MAIN not defined
-#endif

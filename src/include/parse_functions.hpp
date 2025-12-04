@@ -7,7 +7,7 @@
 namespace duckdb {
 
 // Forward declarations
-class DatabaseInstance;
+class ExtensionLoader;
 
 struct FunctionResult {
 	std::string function_name;
@@ -15,7 +15,7 @@ struct FunctionResult {
 	std::string context;     // The context where this function appears (SELECT, WHERE, etc.)
 };
 
-void RegisterParseFunctionsFunction(DatabaseInstance &db);
-void RegisterParseFunctionScalarFunction(DatabaseInstance &db);
+void RegisterParseFunctionsFunction(ExtensionLoader &loader);
+void RegisterParseFunctionScalarFunction(ExtensionLoader &loader);
 
 } // namespace duckdb

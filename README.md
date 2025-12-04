@@ -4,7 +4,7 @@ An experimental DuckDB extension that exposes functionality from DuckDB's native
 
 ## Overview
 
-`parser_tools` is a DuckDB extension designed to provide SQL parsing capabilities within the database. It allows you to analyze SQL queries and extract structural information directly in SQL. This extension provides parsing functions for tables, WHERE clauses, and function calls (see [Functions](#functions) below).
+`parser_tools` is a DuckDB extension designed to provide SQL parsing capabilities within the database. It allows you to analyze SQL queries and extract structural information directly in SQL. This extension provides parsing functions for tables, WHERE clauses, function calls, and statements.
 
 ## Features
 
@@ -12,6 +12,7 @@ An experimental DuckDB extension that exposes functionality from DuckDB's native
 - **Extract function calls** from a SQL query with context information (e.g. `SELECT`, `WHERE`, `HAVING`, etc.)
 - **Extract column references** from a SQL query with comprehensive dependency tracking
 - **Parse WHERE clauses** to extract conditions and operators
+- **Parse multi-statement SQL** to extract individual statements or count the number of statements
 - Support for **window functions**, **nested functions**, and **CTEs**
 - **Alias chain tracking** for complex column dependencies
 - **Nested struct field access** parsing (e.g., `table.column.field.subfield`)
@@ -106,7 +107,7 @@ Context helps identify where elements are used in the query.
 
 ## Functions
 
-This extension provides parsing functions for tables, functions, columns, and WHERE clauses. Each category includes both table functions (for detailed results) and scalar functions (for programmatic use).
+This extension provides parsing functions for tables, functions, columns, statements, and WHERE clauses. Each category includes both table functions (for detailed results) and scalar functions (for programmatic use).
 
 In general, errors (e.g. Parse Exception) will not be exposed to the user, but instead will result in an empty result. This simplifies batch processing. When validity is needed, [is_parsable](#is_parsablesql_query--scalar-function) can be used.
 
@@ -395,6 +396,92 @@ FROM (VALUES
 └───────────────────────────────────────────────┴────────┘
 ```
 
+---
+
+### Statement Parsing Functions
+
+These functions parse multi-statement SQL strings and extract individual statements or count them.
+
+#### `parse_statements(sql_query)` – Table Function
+
+Parses a SQL string containing multiple statements and returns each statement as a separate row.
+
+##### Usage
+```sql
+SELECT * FROM parse_statements('SELECT 42; SELECT 43;');
+```
+
+##### Returns
+A table with:
+- `statement`: the SQL statement text
+
+##### Example
+```sql
+SELECT * FROM parse_statements($$
+    SELECT * FROM users WHERE active = true;
+    INSERT INTO log VALUES ('query executed');
+    SELECT count(*) FROM transactions;
+$$);
+```
+
+| statement |
+|-----------|
+| SELECT * FROM users WHERE (active = true) |
+| INSERT INTO log (VALUES ('query executed')) |
+| SELECT count_star() FROM transactions |
+
+---
+
+#### `parse_statements(sql_query)` – Scalar Function
+
+Returns a list of statement strings from a multi-statement SQL query.
+
+##### Usage
+```sql
+SELECT parse_statements('SELECT 42; SELECT 43;');
+----
+[SELECT 42, SELECT 43]
+```
+
+##### Returns
+A list of strings, each being a SQL statement.
+
+##### Example
+```sql
+SELECT parse_statements('SELECT 1; INSERT INTO test VALUES (2); SELECT 3;');
+----
+[SELECT 1, 'INSERT INTO test (VALUES (2))', SELECT 3]
+```
+
+---
+
+#### `num_statements(sql_query)` – Scalar Function
+
+Returns the number of statements in a multi-statement SQL query.
+
+##### Usage
+```sql
+SELECT num_statements('SELECT 42; SELECT 43;');
+----
+2
+```
+
+##### Returns
+An integer count of the number of SQL statements.
+
+##### Example
+```sql
+SELECT num_statements($$
+    WITH cte AS (SELECT 1) SELECT * FROM cte;
+    UPDATE users SET last_seen = now();
+    SELECT count(*) FROM users;
+    DELETE FROM temp_data;
+$$);
+----
+4
+```
+
+---
 
 ## Development
 

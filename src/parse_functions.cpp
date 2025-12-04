@@ -2,12 +2,12 @@
 #include "duckdb.hpp"
 #include "duckdb/parser/parser.hpp"
 #include "duckdb/parser/statement/select_statement.hpp"
+#include "duckdb/parser/query_node/cte_node.hpp"
 #include "duckdb/parser/query_node/select_node.hpp"
 #include "duckdb/parser/expression/function_expression.hpp"
 #include "duckdb/parser/expression/window_expression.hpp"
 #include "duckdb/parser/parsed_expression_iterator.hpp"
 #include "duckdb/parser/result_modifier.hpp"
-#include "duckdb/main/extension_util.hpp"
 #include "duckdb/function/scalar/nested_functions.hpp"
 
 
@@ -202,7 +202,14 @@ static void ExtractFunctionsFromQueryNode(const QueryNode &node, std::vector<Fun
 				}
 			}
 		}
-	}
+	// additional step necessary for duckdb v1.4.0: unwrap CTE node
+	}  else if (node.type == QueryNodeType::CTE_NODE) {
+        auto &cte_node = (CTENode &)node;
+
+        if (cte_node.child) {
+            ExtractFunctionsFromQueryNode(*cte_node.child, results);
+        }
+    }
 }
 
 static void ExtractFunctionsFromSQL(const std::string &sql, std::vector<FunctionResult> &results) {
@@ -328,15 +335,15 @@ static void ParseFunctionsScalarFunction_struct(DataChunk &args, ExpressionState
 // Extension scaffolding
 // ---------------------------------------------------
 
-void RegisterParseFunctionsFunction(DatabaseInstance &db) {
+void RegisterParseFunctionsFunction(ExtensionLoader &loader) {
 	TableFunction tf("parse_functions", {LogicalType::VARCHAR}, ParseFunctionsFunction, ParseFunctionsBind, ParseFunctionsInit);
-	ExtensionUtil::RegisterFunction(db, tf);
+	loader.RegisterFunction(tf);
 }
 
-void RegisterParseFunctionScalarFunction(DatabaseInstance &db) {
+void RegisterParseFunctionScalarFunction(ExtensionLoader &loader) {
 	// parse_function_names is a scalar function that returns a list of function names
 	ScalarFunction sf("parse_function_names", {LogicalType::VARCHAR}, LogicalType::LIST(LogicalType::VARCHAR), ParseFunctionNamesScalarFunction);
-	ExtensionUtil::RegisterFunction(db, sf);
+	loader.RegisterFunction(sf);
 
 	// parse_functions_struct is a scalar function that returns a list of structs
 	auto return_type = LogicalType::LIST(LogicalType::STRUCT({
@@ -345,7 +352,7 @@ void RegisterParseFunctionScalarFunction(DatabaseInstance &db) {
 		{"context", LogicalType::VARCHAR}
 	}));
 	ScalarFunction sf_struct("parse_functions", {LogicalType::VARCHAR}, return_type, ParseFunctionsScalarFunction_struct);
-	ExtensionUtil::RegisterFunction(db, sf_struct);
+	loader.RegisterFunction(sf_struct);
 }
 
 

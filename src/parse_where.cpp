@@ -19,7 +19,6 @@
 #include "duckdb/parser/expression/positional_reference_expression.hpp"
 #include "duckdb/parser/expression/parameter_expression.hpp"
 #include "duckdb/parser/tableref/basetableref.hpp"
-#include "duckdb/main/extension_util.hpp"
 
 namespace duckdb {
 
@@ -236,19 +235,19 @@ static void ParseWhereScalarFunction(DataChunk &args, ExpressionState &state, Ve
     });
 }
 
-void RegisterParseWhereFunction(DatabaseInstance &db) {
+void RegisterParseWhereFunction(ExtensionLoader &loader) {
     TableFunction tf("parse_where", {LogicalType::VARCHAR}, ParseWhereFunction, ParseWhereBind, ParseWhereInit);
-    ExtensionUtil::RegisterFunction(db, tf);
+    loader.RegisterFunction(tf);
 }
 
-void RegisterParseWhereScalarFunction(DatabaseInstance &db) {
+void RegisterParseWhereScalarFunction(ExtensionLoader &loader) {
     auto return_type = LogicalType::LIST(LogicalType::STRUCT({
         {"condition", LogicalType::VARCHAR},
         {"table_name", LogicalType::VARCHAR},
         {"context", LogicalType::VARCHAR}
     }));
     ScalarFunction sf("parse_where", {LogicalType::VARCHAR}, return_type, ParseWhereScalarFunction);
-    ExtensionUtil::RegisterFunction(db, sf);
+    loader.RegisterFunction(sf);
 }
 
 static string DetailedExpressionTypeToOperator(ExpressionType type) {
@@ -476,9 +475,9 @@ static void ParseWhereDetailedFunction(ClientContext &context,
     state.row++;
 }
 
-void RegisterParseWhereDetailedFunction(DatabaseInstance &db) {
+void RegisterParseWhereDetailedFunction(ExtensionLoader &loader) {
     TableFunction tf("parse_where_detailed", {LogicalType::VARCHAR}, ParseWhereDetailedFunction, ParseWhereDetailedBind, ParseWhereDetailedInit);
-    ExtensionUtil::RegisterFunction(db, tf);
+    loader.RegisterFunction(tf);
 }
 
 } // namespace duckdb 
